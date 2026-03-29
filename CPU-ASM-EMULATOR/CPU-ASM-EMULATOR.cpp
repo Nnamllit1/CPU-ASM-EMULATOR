@@ -32,6 +32,9 @@ enum class EncodingKind { // Enum to represent the kind of instruction encoding 
 	RR,   // opcode | rx | ry | 0
 	RI,   // opcode | rx | 0  | imm
 	J,    // opcode | 0  | 0  | label
+	JC,   // opcode | rx | 0  | label (conditional jump based on register value)
+	JL,   // opcode | rx | ry | label (conditional jump based on register differences)
+	None, // No specific encoding (used for instructions without operands)
 };
 
 struct ParsedInstruction { // Struct to represent a parsed instruction, including its mnemonic and operands
@@ -57,10 +60,15 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"movc", {0x0002, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"add",  {0x0003, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"sub",  {0x0004, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
-	{"srl",  {0x0005, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
-	{"srr",  {0x0006, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"shl",  {0x0005, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"shr",  {0x0006, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"movi", {0x0000, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
-	{"jmp",  {0x0007, {OperandKind::Label}, EncodingKind::J}}
+	{"jmp",  {0x0007, {OperandKind::Label}, EncodingKind::J}},
+	{"jz",   {0x0008, {OperandKind::Register, OperandKind::Label}, EncodingKind::JC}},
+	{"jnz",  {0x0009, {OperandKind::Register, OperandKind::Label}, EncodingKind::JC}},
+	{"je",   {0x000a, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
+	{"jne",  {0x000b, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
+	{"halt", {0x000c, {}, EncodingKind::None}},
 };
 // Function to initialize register names and their corresponding register numbers
 void initializeRegisterNames() {
@@ -154,6 +162,21 @@ uint64_t encodeInstruction(const ParsedInstruction& ins) {
 	case EncodingKind::J:
 		c = encodeOperand(ins.operands[0], def.operands[0]); // label in special field
 		break;
+
+	case EncodingKind::JC:
+		a = encodeOperand(ins.operands[0], def.operands[0]); // rx
+		c = encodeOperand(ins.operands[1], def.operands[1]); // label in special field
+		break;
+
+	case EncodingKind::JL:
+		a = encodeOperand(ins.operands[0], def.operands[0]); // rx
+		b = encodeOperand(ins.operands[1], def.operands[1]); // ry
+		c = encodeOperand(ins.operands[2], def.operands[2]); // label in special field
+		break;
+
+	case EncodingKind::None:
+		// No operands to encode, all fields remain zero.
+		break;
 	}
 
 	return (static_cast<uint64_t>(op) << 48) |
@@ -175,8 +198,15 @@ std::string trim(const std::string& str) {
 
 // Function to parse a line of assembly code into a ParsedInstruction struct, including the mnemonic and operands
 ParsedInstruction parseLine(const std::string& rawLine) {
-	// Copy input and normalize comma separators to spaces so >> extraction works uniformly.
 	std::string line = rawLine;
+
+	// Strip inline comments starting with ';'
+	size_t commentPos = line.find(';');
+	if (commentPos != std::string::npos) {
+		line = line.substr(0, commentPos);
+	}
+
+	// Copy input and normalize comma separators to spaces so >> extraction works uniformly.
 	for (char& c : line) {
 		if (c == ',') c = ' ';
 	}
@@ -359,16 +389,48 @@ void execute(uint64_t instr) {
 		registers[rx] -= registers[ry];
 		break;
 
-	case 0x0005: // srl
+	case 0x0005: // shl
 		registers[rx] <<= registers[ry];
 		break;
 
-	case 0x0006: // srr
+	case 0x0006: // shr
 		registers[rx] >>= registers[ry];
 		break;
 
 	case 0x0007: // jmp
 		PC = sp;
+		return;
+
+	case 0x0008: // jz
+		if (registers[rx] == 0) {
+			PC = sp;
+			return;
+		}
+		break;
+
+	case 0x0009: // jnz
+		if (registers[rx] != 0) {
+			PC = sp;
+			return;
+		}
+		break;
+
+	case 0x000a: // je
+		if (registers[rx] == registers[ry]) {
+			PC = sp;
+			return;
+		}
+		break;
+
+	case 0x000b: // jne
+		if (registers[rx] != registers[ry]) {
+			PC = sp;
+			return;
+		}
+		break;
+
+	case 0x000c: // halt
+		PC = program.size();
 		return;
 
 	default:

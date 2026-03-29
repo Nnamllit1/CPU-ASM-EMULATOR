@@ -3,5 +3,5 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="CPU-ASM-EMULATOR/CPU-ASM-EMULATOR.vcxproj" />
+  <Project Path="CPU-ASM-EMULATOR/CPU-ASM-EMULATOR.vcxproj" Id="28f5cabd-8baa-417e-b550-439ec6c3acea" />
 </Solution>

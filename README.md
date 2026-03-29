@@ -84,8 +84,13 @@ label:
 | movc | rX, rY | Move register to register, clearing the source register | 0000000000000010 |
 | add | rX, rY | Add register to register | 0000000000000011 |
 | sub | rX, rY | Subtract register from register | 0000000000000100 |
-| srl | rX, rY | Shift register left logically (0000000001010110 -> 0000000010101100 so 86 -> 172) | 0000000000000101 |
-| srr | rX, rY | Shift register right logically (0000000010101100 -> 0000000001010110 so 172 -> 86) | 0000000000000110 |
+| shl | rX, rY | Shift register left logically (0000000001010110 -> 0000000010101100 so 86 -> 172) | 0000000000000101 |
+| shr | rX, rY | Shift register right logically (0000000010101100 -> 0000000001010110 so 172 -> 86) | 0000000000000110 |
 | jmp | label | Jump to label | 0000000000000111 |
+| jz | rX, label | Jump to label if zero | 0000000000001000 |
+| jnz | rX, label | Jump to label if not zero | 0000000000001001 |
+| je | rX, rY, label | Jump to label if equal | 0000000000001010 |
+| jne | rX, rY, label | Jump to label if not equal | 0000000000001011 |
+| halt | | Halt the CPU | 0000000000001111 |
 
 More instructions will be added later.
