@@ -325,7 +325,7 @@ bool assemble() {
 					<< std::bitset<16>(sp) << "\n";
 			}
 		}
-		else if (ARG_outbin) // If the user has requested to output the assembled binary, print the binary instructions without verbose mode details.
+		if (ARG_outbin) // If the user has requested to output the assembled binary, print the binary instructions without verbose mode details.
 		{
 			for (size_t i = 0; i < outputBinary.size(); ++i) {
 				std::cout << std::bitset<64>(outputBinary[i]) << "\n";
@@ -430,6 +430,7 @@ void execute(uint64_t instr) {
 		break;
 
 	case 0x000c: // halt
+		std::cout << "HALT encountered. Stopping execution.\n\n";
 		PC = program.size();
 		return;
 
