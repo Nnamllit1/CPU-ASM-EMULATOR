@@ -80,8 +80,8 @@ label:
 | Instruction | Usage | Description | Opcode |
 | --- | --- | --- | --- |
 | movi | rX, imm | Move immediate to register | 0000000000000000 |
-| movr | rX, rY | Move register to register, but dosent clear the source register (just like a copy) | 0000000000000001 |
-| mov | rX, rY | Move register to register, clearing the source register | 0000000000000010 |
+| mov | rX, rY | Move register to register, but dosent clear the source register (just like a copy) | 0000000000000001 |
+| movc | rX, rY | Move register to register, clearing the source register | 0000000000000010 |
 | add | rX, rY | Add register to register | 0000000000000011 |
 | sub | rX, rY | Subtract register from register | 0000000000000100 |
 | srl | rX, rY | Shift register left logically (0000000001010110 -> 0000000010101100 so 86 -> 172) | 0000000000000101 |

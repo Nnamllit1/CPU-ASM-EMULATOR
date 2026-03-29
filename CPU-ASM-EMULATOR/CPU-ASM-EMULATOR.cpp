@@ -5,6 +5,7 @@
 #include <vector>
 #include <sstream>
 #include <bitset>
+#include <array>
 
 // CPU-ASM-EMULATOR CONFIG
 const int16_t REGISTER_COUNT = 32; // Number of registers in the CPU emulator (only 16 bits max)
@@ -13,10 +14,11 @@ const int REGISTER_SIZE = 16; // Size of each register in bits
 
 // Global variables to track modes and file paths
 
-bool ARG_verboseMode = true; // Global variable to track verbose mode TODO: make this false by default, but for testing purposes, it's set to true for now
+bool ARG_verboseMode = false; // Global variable to track verbose mode TODO: make this false by default, but for testing purposes, it's set to true for now
 bool ARG_asmMode = false; // Global variable to track assembly mode (so if we need to asmbl)
 char* ARG_asmFilePath = nullptr; // Global variable to store the assembly file path
 bool ARG_outbin = false; // Global variable to track if the user wants to output the assembled binary
+bool ARG_emulate = false; // Global variable to track if the user wants to emulate the assembled binary
 
 
 // Assembly variables
@@ -26,6 +28,11 @@ std::vector<uint64_t> outputBinary; // Vector to store the output binary instruc
 std::map <std::string, int16_t> registerNames = {}; // Map to store register names and their corresponding register numbers (e.g., "R0" -> 0000000000000000, "R1" -> 0000000000000001, ..., "R31" -> ...)
 std::string asmFileContent = ""; // Variable to store the content of the assembly file as a string
 
+enum class EncodingKind { // Enum to represent the kind of instruction encoding based on the operand types
+	RR,   // opcode | rx | ry | 0
+	RI,   // opcode | rx | 0  | imm
+	J,    // opcode | 0  | 0  | label
+};
 
 struct ParsedInstruction { // Struct to represent a parsed instruction, including its mnemonic and operands
 	std::string mnemonic;
@@ -39,23 +46,22 @@ enum class OperandKind { // Enum to represent the kind of operand in an instruct
 	Label
 };
 
-struct InstructionDef { // Struct to represent an instruction definition, including its mnemonic, opcode, and operand kinds
-	std::string mnemonic;
+struct InstructionDef { // Struct to represent the definition of an instruction, including its opcode, operand kinds, and encoding type
 	uint16_t opcode;
 	std::vector<OperandKind> operands;
+	EncodingKind encoding;
 };
 
-const std::map<std::string, InstructionDef> instructionSet = { // Map to store instruction definitions, including their mnemonics, opcodes, and operand kinds
-	{"movi", {"movi", 0x0000, {OperandKind::Register, OperandKind::Immediate}}},
-	{"movr", {"movr", 0x0001, {OperandKind::Register, OperandKind::Register}}},
-	{"mov",  {"mov",  0x0002, {OperandKind::Register, OperandKind::Register}}},
-	{"add",  {"add",  0x0003, {OperandKind::Register, OperandKind::Register}}},
-	{"sub",  {"sub",  0x0004, {OperandKind::Register, OperandKind::Register}}},
-	{"srl",  {"srl",  0x0005, {OperandKind::Register, OperandKind::Register}}},
-	{"srr",  {"srr",  0x0006, {OperandKind::Register, OperandKind::Register}}},
-	{"jmp",  {"jmp",  0x0007, {OperandKind::Label}}}
+const std::map<std::string, InstructionDef> instructionSet = { // Map to define the instruction set, associating mnemonics with their corresponding opcodes, operand kinds, and encoding types
+	{"mov",  {0x0001, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"movc", {0x0002, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"add",  {0x0003, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"sub",  {0x0004, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"srl",  {0x0005, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"srr",  {0x0006, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"movi", {0x0000, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
+	{"jmp",  {0x0007, {OperandKind::Label}, EncodingKind::J}}
 };
-
 // Function to initialize register names and their corresponding register numbers
 void initializeRegisterNames() {
 	// Create register name keys "R0".."R31" and map to their numeric index.
@@ -120,7 +126,6 @@ uint16_t encodeOperand(const std::string& token, OperandKind kind) {
 
 // Function to encode a parsed instruction into a 64-bit binary instruction based on the instruction definitions and operand encoding
 uint64_t encodeInstruction(const ParsedInstruction& ins) {
-	// Find instruction definition (opcode and operand kinds) for the mnemonic.
 	auto it = instructionSet.find(ins.mnemonic);
 	if (it == instructionSet.end()) {
 		throw std::runtime_error("Unknown instruction: " + ins.mnemonic);
@@ -128,27 +133,33 @@ uint64_t encodeInstruction(const ParsedInstruction& ins) {
 
 	const InstructionDef& def = it->second;
 
-	// Validate operand count: instruction definition declares expected operand kinds.
 	if (ins.operands.size() != def.operands.size()) {
 		throw std::runtime_error("Wrong operand count for " + ins.mnemonic);
 	}
 
-	// fields: [opcode, op1, op2, op3] each 16 bits -> combined into 64-bit word
-	uint16_t fields[4] = { 0, 0, 0, 0 };
-	fields[0] = def.opcode;
+	uint16_t op = def.opcode;
+	uint16_t a = 0, b = 0, c = 0;
 
-	// Encode each operand into its 16-bit slot.
-	for (size_t i = 0; i < def.operands.size(); ++i) {
-		fields[i + 1] = encodeOperand(ins.operands[i], def.operands[i]);
+	switch (def.encoding) {
+	case EncodingKind::RR:
+		a = encodeOperand(ins.operands[0], def.operands[0]); // Rx
+		b = encodeOperand(ins.operands[1], def.operands[1]); // Ry
+		break;
+
+	case EncodingKind::RI:
+		a = encodeOperand(ins.operands[0], def.operands[0]); // Rx
+		c = encodeOperand(ins.operands[1], def.operands[1]); // imm in special field
+		break;
+
+	case EncodingKind::J:
+		c = encodeOperand(ins.operands[0], def.operands[0]); // label in special field
+		break;
 	}
 
-	// Place fields into a 64-bit word: opcode in highest 16 bits, then operand slots.
-	uint64_t encoded = 0;
-	encoded |= static_cast<uint64_t>(fields[0]) << 48;
-	encoded |= static_cast<uint64_t>(fields[1]) << 32;
-	encoded |= static_cast<uint64_t>(fields[2]) << 16;
-	encoded |= static_cast<uint64_t>(fields[3]);
-	return encoded;
+	return (static_cast<uint64_t>(op) << 48) |
+		(static_cast<uint64_t>(a) << 32) |
+		(static_cast<uint64_t>(b) << 16) |
+		static_cast<uint64_t>(c);
 }
 
 // Function to trim whitespace from a string (used for parsing assembly lines)
@@ -270,7 +281,24 @@ bool assemble() {
 		if (ARG_verboseMode) {
 			std::cout << "Instructions processed successfully. Output binary instructions:\n";
 			for (size_t i = 0; i < outputBinary.size(); ++i) {
-				std::cout << "Instruction " << i << ": " << std::bitset<64>(outputBinary[i]) << "\n";
+				uint64_t instr = outputBinary[i];
+				uint16_t op = (instr >> 48) & 0xFFFF;
+				uint16_t rx = (instr >> 32) & 0xFFFF;
+				uint16_t ry = (instr >> 16) & 0xFFFF;
+				uint16_t sp = instr & 0xFFFF;
+
+				std::cout
+					<< "Instruction " << i << ": "
+					<< std::bitset<16>(op) << " "
+					<< std::bitset<16>(rx) << " "
+					<< std::bitset<16>(ry) << " "
+					<< std::bitset<16>(sp) << "\n";
+			}
+		}
+		else if (ARG_outbin) // If the user has requested to output the assembled binary, print the binary instructions without verbose mode details.
+		{
+			for (size_t i = 0; i < outputBinary.size(); ++i) {
+				std::cout << std::bitset<64>(outputBinary[i]) << "\n";
 			}
 		}
 	}
@@ -288,7 +316,68 @@ bool assemble() {
 
 std::vector<uint64_t> program; // Array to store the assembly program instructions (bits)
 int PC = 0; // Program Counter
-std::array<uint16_t, REGISTER_COUNT>; // Array to represent the registers in the CPU emulator (16-bit registers)
+std::array<uint16_t, REGISTER_COUNT> registers; // Array to represent the registers in the CPU emulator (16-bit registers)
+
+void execute(uint64_t instr) {
+	uint16_t op = (instr >> 48) & 0xFFFF;
+	uint16_t rx = (instr >> 32) & 0xFFFF;
+	uint16_t ry = (instr >> 16) & 0xFFFF;
+	uint16_t sp = instr & 0xFFFF;
+
+	if (rx >= REGISTER_COUNT || ry >= REGISTER_COUNT) {
+		std::cout << "Register index out of range. rx=" << rx << " ry=" << ry << "\n";
+		return;
+	}
+
+	if (ARG_verboseMode) {
+		std::cout << "PC=" << PC
+			<< " OP=" << op
+			<< " RX=" << rx
+			<< " RY=" << ry
+			<< " SP=" << sp << "\n";
+	}
+
+	switch (op) {
+	case 0x0000: // movi
+		registers[rx] = sp;
+		break;
+
+	case 0x0001: // mov
+		registers[rx] = registers[ry];
+		break;
+
+	case 0x0002: // movc
+		registers[rx] = registers[ry];
+		registers[ry] = 0;
+		break;
+
+	case 0x0003: // add
+		registers[rx] += registers[ry];
+		break;
+
+	case 0x0004: // sub
+		registers[rx] -= registers[ry];
+		break;
+
+	case 0x0005: // srl
+		registers[rx] <<= registers[ry];
+		break;
+
+	case 0x0006: // srr
+		registers[rx] >>= registers[ry];
+		break;
+
+	case 0x0007: // jmp
+		PC = sp;
+		return;
+
+	default:
+		std::cout << "Unknown opcode: " << op << "\n";
+		break;
+	}
+
+	PC++;
+}
 
 
 int main(int argc, char* argv[])
@@ -310,8 +399,9 @@ int main(int argc, char* argv[])
 				std::cout << "  --verbose    Enable verbose mode\n";
 				std::cout << "  --asm [path] Enable assembly mode and asmbl\n";
 				std::cout << "  --outbin     Prints the asmbled bin\n";
+				std::cout << "  --emulate    Emulates the asmbled bin\n";
 				std::cout << "\n";
-				std::cout << "Example: CPU-ASM-EMULATOR --asm program.asm --verbose --outbin\n";
+				std::cout << "Example: CPU-ASM-EMULATOR --asm program.asm --verbose --outbin --emulate\n";
 				return 0;
 			}
 			else if (std::string(argv[i]) == "--version") {
@@ -344,6 +434,10 @@ int main(int argc, char* argv[])
 			else if (std::string(argv[i]) == "--outbin") {
 				// Set output binary flag to true
 				ARG_outbin = true;
+			}
+			else if (std::string(argv[i]) == "--emulate") {
+				// Set emulate flag to true
+				ARG_emulate = true;
 			}
 
 			else {
@@ -385,7 +479,23 @@ int main(int argc, char* argv[])
 		}
 
 		// Call the function to assemble the assembly code into binary instructions
-		assemble();
+		if (!assemble()) {
+			std::cout << "Error: Assembly failed.\n";
+			return 1; // Exit with an error code if assembly fails
+		}
+	}
+	if (ARG_emulate) {
+		program = outputBinary;
+		PC = 0;
+
+		while (PC < program.size()) {
+			execute(program[PC]);
+		}
+		// After emulation, print the final state of the registers
+		std::cout << "Final register state after emulation:\n";
+		for (int i = 0; i < REGISTER_COUNT; ++i) {
+			std::cout << "R" << i << ": " << std::bitset<16>(registers[i]) << ": " << registers[i] << "\n";
+		}
 	}
 	else
 	{
