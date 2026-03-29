@@ -54,6 +54,21 @@ This is a simple emulator and ASM compiler for the "IDK i want to emulate a proc
 Instruction names are not case sensitive.
 Instructions are 64 bits long.
 
+#### Labels
+
+Labels are used to mark a position in the code.
+Labels are used to jump to a position in the code.
+
+##### Example
+
+``` asm
+label:
+    mov r0, r1
+    add r0, r2
+    sub r0, r3
+    jmp label
+```
+
 #### Instruction format
 
 | Opcode | Rx | Ry | Undefined (or Special) |
@@ -64,12 +79,13 @@ Instructions are 64 bits long.
 
 | Instruction | Usage | Description | Opcode |
 | --- | --- | --- | --- |
-| movi | rX, imm | Move immediate to register | 0000000000000001 |
-| movr | rX, rY | Move register to register, but dosent clear the source register (just like a copy) | 0000000000000010 |
-| mov | rX, rY | Move register to register, clearing the source register | 0000000000000011 |
-| add | rX, rY | Add register to register | 0000000000000100 |
-| sub | rX, rY | Subtract register from register | 0000000000000101 |
-| srl | rX, rY | Shift register left logically (0000000001010110 -> 0000000010101100 so 86 -> 172) | 0000000000000110 |
-| srr | rX, rY | Shift register right logically (0000000010101100 -> 0000000001010110 so 172 -> 86) | 0000000000000111 |
+| movi | rX, imm | Move immediate to register | 0000000000000000 |
+| movr | rX, rY | Move register to register, but dosent clear the source register (just like a copy) | 0000000000000001 |
+| mov | rX, rY | Move register to register, clearing the source register | 0000000000000010 |
+| add | rX, rY | Add register to register | 0000000000000011 |
+| sub | rX, rY | Subtract register from register | 0000000000000100 |
+| srl | rX, rY | Shift register left logically (0000000001010110 -> 0000000010101100 so 86 -> 172) | 0000000000000101 |
+| srr | rX, rY | Shift register right logically (0000000010101100 -> 0000000001010110 so 172 -> 86) | 0000000000000110 |
+| jmp | label | Jump to label | 0000000000000111 |
 
 More instructions will be added later.
