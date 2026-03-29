@@ -390,11 +390,11 @@ void execute(uint64_t instr) {
 		break;
 
 	case 0x0005: // shl
-		registers[rx] <<= registers[ry];
+		registers[rx] <<= registers[ry]; // TODO: Fix shift amount exceeding register size (e.g., shifting by 16 or more should result in zero)
 		break;
 
 	case 0x0006: // shr
-		registers[rx] >>= registers[ry];
+		registers[rx] >>= registers[ry]; // TODO: Fix shift amount exceeding register size (e.g., shifting by 16 or more should result in zero)
 		break;
 
 	case 0x0007: // jmp
@@ -549,6 +549,7 @@ int main(int argc, char* argv[])
 	if (ARG_emulate) {
 		program = outputBinary;
 		PC = 0;
+		registers.fill(0); // Initialize all registers to zero before emulation
 
 		while (PC < program.size()) {
 			execute(program[PC]);
