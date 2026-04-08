@@ -91,6 +91,6 @@ label:
 | jnz | rX, label | Jump to label if not zero | 0000000000001001 |
 | je | rX, rY, label | Jump to label if equal | 0000000000001010 |
 | jne | rX, rY, label | Jump to label if not equal | 0000000000001011 |
-| halt | | Halt the CPU | 0000000000001100 |
+| hlt | | Halt the CPU | 0000000000001111 |
 
 More instructions will be added later.

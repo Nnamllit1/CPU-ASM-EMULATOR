@@ -68,7 +68,7 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"jnz",  {0x0009, {OperandKind::Register, OperandKind::Label}, EncodingKind::JC}},
 	{"je",   {0x000a, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 	{"jne",  {0x000b, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
-	{"halt", {0x000c, {}, EncodingKind::None}},
+	{"hlt", {0x000c, {}, EncodingKind::None}},
 };
 // Function to initialize register names and their corresponding register numbers
 void initializeRegisterNames() {
@@ -429,8 +429,8 @@ void execute(uint64_t instr) {
 		}
 		break;
 
-	case 0x000c: // halt
-		std::cout << "HALT encountered. Stopping execution.\n\n";
+	case 0x000c: // hlt
+		std::cout << "HLT encountered. Stopping execution.\n\n";
 		PC = program.size();
 		return;
 
@@ -546,6 +546,7 @@ int main(int argc, char* argv[])
 			std::cout << "Error: Assembly failed.\n";
 			return 1; // Exit with an error code if assembly fails
 		}
+		std::free(ARG_asmFilePath); // Free the memory allocated for the assembly file path
 	}
 	if (ARG_emulate) {
 		program = outputBinary;
