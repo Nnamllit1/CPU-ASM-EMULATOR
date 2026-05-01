@@ -6,6 +6,7 @@ This is a simple emulator and ASM compiler for the "IDK i want to emulate a proc
 
 - CPU: 16 bit
   - Registers: 32 registers
+  - Register fields in instructions are 8 bits wide
   - Instruction set: IDK yet :D
 - Memory: 64 KiB (Implemented now :D)
 - Instruction set:
@@ -64,16 +65,16 @@ Labels are used to jump to a position in the code.
 ``` asm
 label:
     mov r0, r1
-    add r0, r2
-    sub r0, r3
+    add r0, r0, r2
+    sub r0, r0, r3
     jmp label
 ```
 
 #### Instruction format
 
-| Opcode | Rx | Ry | Undefined (or Special) |
-| --- | --- | --- | --- |
-| xxxxxxxxxxxxxxxx | xxxxxxxxxxxxxxxx | xxxxxxxxxxxxxxxx | xxxxxxxxxxxxxxxx |
+| Opcode | Rx | Ry | Rz | Mode | Special / Immediate / Label |
+| --- | --- | --- | --- | --- | --- |
+| xxxxxxxxxxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxxxxxxxxxx |
 
 #### Basic instructions
 
@@ -82,10 +83,10 @@ label:
 | movi | rX, imm | Move immediate to register | 0000000000000000 |
 | mov | rX, rY | Move register to register, but dosent clear the source register (just like a copy) | 0000000000000001 |
 | movc | rX, rY | Move register to register, clearing the source register | 0000000000000010 |
-| add | rX, rY | Add register to register | 0000000000000011 |
-| sub | rX, rY | Subtract register from register | 0000000000000100 |
-| shl | rX, rY | Shift register left logically (0000000001010110 -> 0000000010101100 so 86 -> 172) | 0000000000000101 |
-| shr | rX, rY | Shift register right logically (0000000010101100 -> 0000000001010110 so 172 -> 86) | 0000000000000110 |
+| add | rX, rY, rZ | Add registers (rX = rY + rZ) | 0000000000000011 |
+| sub | rX, rY, rZ | Subtract registers (rX = rY - rZ) | 0000000000000100 |
+| shl | rX, rY, rZ | Shift register left logically (rX = rY << rZ) | 0000000000000101 |
+| shr | rX, rY, rZ | Shift register right logically (rX = rY >> rZ) | 0000000000000110 |
 | jmp | label | Jump to label | 0000000000000111 |
 | jz | rX, label | Jump to label if zero | 0000000000001000 |
 | jnz | rX, label | Jump to label if not zero | 0000000000001001 |
@@ -97,6 +98,9 @@ label:
 | ldi | rX, imm | Load immediate from memory (rX = memory[imm]) | 0000000000001111 |
 | st | rX, rY | Store register to memory (memory[rX] = rY) | 0000000000010000 |
 | sti | rX, imm | Store immediate to memory (memory[imm] = rX) | 0000000000010001 |
+| mul | rX, rY, rZ | Multiply registers (rX = rY * rZ) | 0000000000010010 |
+| div | rX, rY, rZ | Divide registers (rX = rY / rZ) | 0000000000010011 |
+| mod | rX, rY, rZ | Modulo registers (rX = rY % rZ) | 0000000000010100 |
 
 More instructions will be added later.
 

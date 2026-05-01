@@ -11,7 +11,7 @@
 #include "defaultincludes.h"
 
 // CPU-ASM-EMULATOR CONFIG
-const int16_t REGISTER_COUNT = 32; // Number of registers in the CPU emulator (only 16 bits max)
+const int8_t REGISTER_COUNT = 32; // Number of registers in the CPU emulator
 const int REGISTER_SIZE = 16; // Size of each register in bits
 
 
@@ -42,12 +42,13 @@ struct Macro {
 std::map<std::string, Macro> macros;
 
 enum class EncodingKind { // Enum to represent the kind of instruction encoding based on the operand types
-	RR,   // opcode | rx | ry | 0
-	R,    // opcode | rx | 0  | 0
-	RI,   // opcode | rx | 0  | imm
-	J,    // opcode | 0  | 0  | label
-	JC,   // opcode | rx | 0  | label (conditional jump based on register value)
-	JL,   // opcode | rx | ry | label (conditional jump based on register differences)
+	RR,   // opcode | rx | ry | rz | mode | 0
+	RRR,  // opcode | rx | ry | rz | mode | 0
+	R,    // opcode | rx | 0  | 0  | mode | 0
+	RI,   // opcode | rx | 0  | 0  | mode | imm
+	J,    // opcode | 0  | 0  | 0  | mode | label
+	JC,   // opcode | rx | 0  | 0  | mode | label (conditional jump based on register value)
+	JL,   // opcode | rx | ry | 0  | mode | label (conditional jump based on register differences)
 	None, // No specific encoding (used for instructions without operands)
 };
 
@@ -72,10 +73,10 @@ struct InstructionDef { // Struct to represent the definition of an instruction,
 const std::map<std::string, InstructionDef> instructionSet = { // Map to define the instruction set, associating mnemonics with their corresponding opcodes, operand kinds, and encoding types
 	{"mov",  {0x0001, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"movc", {0x0002, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
-	{"add",  {0x0003, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
-	{"sub",  {0x0004, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
-	{"shl",  {0x0005, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
-	{"shr",  {0x0006, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"add",  {0x0003, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"sub",  {0x0004, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"shl",  {0x0005, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"shr",  {0x0006, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
 	{"movi", {0x0000, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 	{"jmp",  {0x0007, {OperandKind::Label}, EncodingKind::J}},
 	{"jz",   {0x0008, {OperandKind::Register, OperandKind::Label}, EncodingKind::JC}},
@@ -88,6 +89,9 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"ldi",  {0x000f, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 	{"st",   {0x0010, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"sti",  {0x0011, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
+	{"mul",  {0x0012, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"div",  {0x0013, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"mod",  {0x0014, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -129,7 +133,7 @@ uint16_t encodeOperand(const std::string& token, OperandKind kind) {
 	case OperandKind::Register: {
 		int16_t reg = getRegisterNumber(token);
 		if (reg == -1) throw std::runtime_error("Invalid register: " + token);
-		// Registers are stored in lower 16 bits of their field.
+		// Register fields are 8 bits wide in the instruction format.
 		return static_cast<uint16_t>(reg);
 	}
 	case OperandKind::Immediate: {
@@ -166,36 +170,43 @@ uint64_t encodeInstruction(const ParsedInstruction& ins) {
 	}
 
 	uint16_t op = def.opcode;
-	uint16_t a = 0, b = 0, c = 0;
+	uint8_t rx = 0, ry = 0, rz = 0, mode = 0;
+	uint16_t sp = 0;
 
 	switch (def.encoding) {
 	case EncodingKind::RR:
-		a = encodeOperand(ins.operands[0], def.operands[0]); // Rx
-		b = encodeOperand(ins.operands[1], def.operands[1]); // Ry
+		rx = static_cast<uint8_t>(encodeOperand(ins.operands[0], def.operands[0])); // Rx
+		ry = static_cast<uint8_t>(encodeOperand(ins.operands[1], def.operands[1])); // Ry
+		break;
+
+	case EncodingKind::RRR:
+		rx = static_cast<uint8_t>(encodeOperand(ins.operands[0], def.operands[0])); // Rx
+		ry = static_cast<uint8_t>(encodeOperand(ins.operands[1], def.operands[1])); // Ry
+		rz = static_cast<uint8_t>(encodeOperand(ins.operands[2], def.operands[2])); // Rz
 		break;
 
 	case EncodingKind::R:
-		a = encodeOperand(ins.operands[0], def.operands[0]); // Rx
+		rx = static_cast<uint8_t>(encodeOperand(ins.operands[0], def.operands[0])); // Rx
 		break;
 
 	case EncodingKind::RI:
-		a = encodeOperand(ins.operands[0], def.operands[0]); // Rx
-		c = encodeOperand(ins.operands[1], def.operands[1]); // imm in special field
+		rx = static_cast<uint8_t>(encodeOperand(ins.operands[0], def.operands[0])); // Rx
+		sp = encodeOperand(ins.operands[1], def.operands[1]); // imm in special field
 		break;
 
 	case EncodingKind::J:
-		c = encodeOperand(ins.operands[0], def.operands[0]); // label in special field
+		sp = encodeOperand(ins.operands[0], def.operands[0]); // label in special field
 		break;
 
 	case EncodingKind::JC:
-		a = encodeOperand(ins.operands[0], def.operands[0]); // rx
-		c = encodeOperand(ins.operands[1], def.operands[1]); // label in special field
+		rx = static_cast<uint8_t>(encodeOperand(ins.operands[0], def.operands[0])); // rx
+		sp = encodeOperand(ins.operands[1], def.operands[1]); // label in special field
 		break;
 
 	case EncodingKind::JL:
-		a = encodeOperand(ins.operands[0], def.operands[0]); // rx
-		b = encodeOperand(ins.operands[1], def.operands[1]); // ry
-		c = encodeOperand(ins.operands[2], def.operands[2]); // label in special field
+		rx = static_cast<uint8_t>(encodeOperand(ins.operands[0], def.operands[0])); // rx
+		ry = static_cast<uint8_t>(encodeOperand(ins.operands[1], def.operands[1])); // ry
+		sp = encodeOperand(ins.operands[2], def.operands[2]); // label in special field
 		break;
 
 	case EncodingKind::None:
@@ -204,9 +215,11 @@ uint64_t encodeInstruction(const ParsedInstruction& ins) {
 	}
 
 	return (static_cast<uint64_t>(op) << 48) |
-		(static_cast<uint64_t>(a) << 32) |
-		(static_cast<uint64_t>(b) << 16) |
-		static_cast<uint64_t>(c);
+		(static_cast<uint64_t>(rx) << 40) |
+		(static_cast<uint64_t>(ry) << 32) |
+		(static_cast<uint64_t>(rz) << 24) |
+		(static_cast<uint64_t>(mode) << 16) |
+		static_cast<uint64_t>(sp);
 }
 
 // Function to trim whitespace from a string (used for parsing assembly lines)
@@ -477,15 +490,19 @@ bool assemble() {
 			for (size_t i = 0; i < outputBinary.size(); ++i) {
 				uint64_t instr = outputBinary[i];
 				uint16_t op = (instr >> 48) & 0xFFFF;
-				uint16_t rx = (instr >> 32) & 0xFFFF;
-				uint16_t ry = (instr >> 16) & 0xFFFF;
+				uint8_t rx = (instr >> 40) & 0xFF;
+				uint8_t ry = (instr >> 32) & 0xFF;
+				uint8_t rz = (instr >> 24) & 0xFF;
+				uint8_t mode = (instr >> 16) & 0xFF;
 				uint16_t sp = instr & 0xFFFF;
 
 				std::cout
 					<< "Instruction " << i << ": "
 					<< std::bitset<16>(op) << " "
-					<< std::bitset<16>(rx) << " "
-					<< std::bitset<16>(ry) << " "
+					<< std::bitset<8>(rx) << " "
+					<< std::bitset<8>(ry) << " "
+					<< std::bitset<8>(rz) << " "
+					<< std::bitset<8>(mode) << " "
 					<< std::bitset<16>(sp) << "\n";
 			}
 		}
@@ -527,20 +544,26 @@ void writeWord(uint16_t addr, uint16_t value) {
 
 void execute(uint64_t instr) {
 	uint16_t op = (instr >> 48) & 0xFFFF;
-	uint16_t rx = (instr >> 32) & 0xFFFF;
-	uint16_t ry = (instr >> 16) & 0xFFFF;
+	uint8_t rx = (instr >> 40) & 0xFF;
+	uint8_t ry = (instr >> 32) & 0xFF;
+	uint8_t rz = (instr >> 24) & 0xFF;
+	uint8_t mode = (instr >> 16) & 0xFF;
 	uint16_t sp = instr & 0xFFFF;
 
-	if (rx >= REGISTER_COUNT || ry >= REGISTER_COUNT) {
-		std::cout << "Register index out of range. rx=" << rx << " ry=" << ry << "\n";
+	if (rx >= REGISTER_COUNT || ry >= REGISTER_COUNT || rz >= REGISTER_COUNT) {
+		std::cout << "Register index out of range. rx=" << static_cast<int>(rx)
+			<< " ry=" << static_cast<int>(ry)
+			<< " rz=" << static_cast<int>(rz) << "\n";
 		return;
 	}
 
 	if (ARG_verboseMode) {
 		std::cout << "PC=" << PC
 			<< " OP=" << op
-			<< " RX=" << rx
-			<< " RY=" << ry
+			<< " RX=" << static_cast<int>(rx)
+			<< " RY=" << static_cast<int>(ry)
+			<< " RZ=" << static_cast<int>(rz)
+			<< " MODE=" << static_cast<int>(mode)
 			<< " SP=" << sp << "\n";
 	}
 
@@ -559,19 +582,19 @@ void execute(uint64_t instr) {
 		break;
 
 	case 0x0003: // add
-		registers[rx] += registers[ry];
+		registers[rx] = registers[ry] + registers[rz];
 		break;
 
 	case 0x0004: // sub
-		registers[rx] -= registers[ry];
+		registers[rx] = registers[ry] - registers[rz];
 		break;
 
 	case 0x0005: // shl
-		registers[rx] <<= registers[ry]; // TODO: Fix shift amount exceeding register size (e.g., shifting by 16 or more should result in zero)
+		registers[rx] = registers[ry] << registers[rz]; // TODO: Fix shift amount exceeding register size (e.g., shifting by 16 or more should result in zero)
 		break;
 
 	case 0x0006: // shr
-		registers[rx] >>= registers[ry]; // TODO: Fix shift amount exceeding register size (e.g., shifting by 16 or more should result in zero)
+		registers[rx] = registers[ry] >> registers[rz]; // TODO: Fix shift amount exceeding register size (e.g., shifting by 16 or more should result in zero)
 		break;
 
 	case 0x0007: // jmp
@@ -613,7 +636,7 @@ void execute(uint64_t instr) {
 
 	case 0x000d: // out
 		if (ARG_verboseMode) { // If verbose mode is enabled, print the output of the register in binary format for better visibility of the register state.
-			std::cout << "Output instruction: R" << rx << " = " << std::bitset<16>(registers[rx]) << "\n";
+			std::cout << "Output instruction: R" << static_cast<int>(rx) << " = " << std::bitset<16>(registers[rx]) << "\n";
 		}
 		// Print the output of the register in ascii character format if the value is a valid ASCII code (0-127)
 		if (registers[rx] <= 127) {
@@ -635,6 +658,28 @@ void execute(uint64_t instr) {
 
 	case 0x0011: // sti: memory[imm] = rX
 		writeWord(sp, registers[rx]);
+		break;
+
+	case 0x0012: // mul
+		registers[rx] = registers[ry] * registers[rz];
+		break;
+
+	case 0x0013: // div
+		if (registers[rz] == 0) {
+			std::cout << "Division by zero. Stopping execution.\n";
+			PC = static_cast<int>(program.size());
+			return;
+		}
+		registers[rx] = registers[ry] / registers[rz];
+		break;
+
+	case 0x0014: // mod
+		if (registers[rz] == 0) {
+			std::cout << "Modulo by zero. Stopping execution.\n";
+			PC = static_cast<int>(program.size());
+			return;
+		}
+		registers[rx] = registers[ry] % registers[rz];
 		break;
 
 	default:
