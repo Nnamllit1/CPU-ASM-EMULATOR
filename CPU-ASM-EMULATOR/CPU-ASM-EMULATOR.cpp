@@ -105,6 +105,7 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"call", {0x001f, {OperandKind::Label}, EncodingKind::J}},
 	{"ret",  {0x0020, {}, EncodingKind::None}},
 	{"outn", {0x0021, {OperandKind::Register}, EncodingKind::R}},
+	{"outs", {0x0022, {OperandKind::Register}, EncodingKind::R}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -762,6 +763,15 @@ void execute(uint64_t instr) {
 
 	case 0x0021: // outn
 		std::cout << registers[rx];
+		break;
+
+	case 0x0022: // outs
+		uint16_t addr = registers[rx];
+
+		while (memory[addr] != 0) {
+			std::cout << static_cast<char>(memory[addr]);
+			addr = static_cast<uint16_t>(addr + 1);
+		}
 		break;
 
 	default:

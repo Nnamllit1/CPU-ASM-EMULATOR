@@ -141,6 +141,7 @@ label:
 | --- | --- | --- | --- |
 | out | rX | Push contents of the register to stdout as an ASCII character | 0000000000001101 |
 | outn | rX | Push contents of the register to stdout as a decimal number | 0000000000100001 |
+| outs | rX | Print a zero-terminated string starting at memory address rX | 0000000000100010 |
 
 ##### Control
 
