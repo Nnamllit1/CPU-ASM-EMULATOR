@@ -128,15 +128,12 @@ start:
 
 Macros are denoted by a `%` at the beginning of the line.
 Macros can be placed anywhere in the line.
+Default macros are compiled into the emulator executable and are available in every assembled file.
 
 ##### Example
 
 ``` asm
-%macro putc reg value
-    movi {reg}, {value}
-    out {reg}
-%endmacro
-
 %putc r0 97
+%newline r0
 hlt
 ```

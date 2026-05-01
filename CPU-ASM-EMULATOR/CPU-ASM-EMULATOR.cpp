@@ -7,6 +7,8 @@
 #include <bitset>
 #include <array>
 
+#include "defaultincludes.h"
+
 // CPU-ASM-EMULATOR CONFIG
 const int16_t REGISTER_COUNT = 32; // Number of registers in the CPU emulator (only 16 bits max)
 const int REGISTER_SIZE = 16; // Size of each register in bits
@@ -19,6 +21,7 @@ bool ARG_asmMode = false; // Global variable to track assembly mode (so if we ne
 const char* ARG_asmFilePath = nullptr; // Non-owning pointer to the assembly file path argument
 bool ARG_outbin = false; // Global variable to track if the user wants to output the assembled binary
 bool ARG_emulate = false; // Global variable to track if the user wants to emulate the assembled binary
+bool ARG_nodefaults = false; // Global variable to track if the user wants to skip loading default includes (macros)
 
 
 // Assembly variables
@@ -210,6 +213,15 @@ std::string trim(const std::string& str) {
 		return ""; // Return an empty string if the input string is all whitespace
 	}
 	return str.substr(first, last - first + 1); // Return the trimmed string
+}
+
+bool loadDefaultIncludes() {
+	if (ARG_verboseMode) {
+		std::cout << "Loaded built-in default includes.\n";
+	}
+
+	asmFileContent = std::string(DEFAULT_INCLUDES_ASM) + "\n" + asmFileContent;
+	return true;
 }
 
 // Function to parse a line of assembly code into a ParsedInstruction struct, including the mnemonic and operands
@@ -620,6 +632,7 @@ int main(int argc, char* argv[])
 				std::cout << "  --asm [path] Enable assembly mode and asmbl\n";
 				std::cout << "  --outbin     Prints the asmbled bin\n";
 				std::cout << "  --emulate    Emulates the asmbled bin\n";
+				std::cout << "  --nodefaults Do not use default includes (macros)\n";
 				std::cout << "\n";
 				std::cout << "Example: CPU-ASM-EMULATOR --asm program.asm --verbose --outbin --emulate\n";
 				return 0;
@@ -659,6 +672,18 @@ int main(int argc, char* argv[])
 				// Set emulate flag to true
 				ARG_emulate = true;
 			}
+			else if (std::string(argv[i]) == "--nodefaults") {
+				// Set the flag to not use default includes (macros)
+				// This will be checked later in the assembly process to determine whether to load default includes or not.
+				// If this flag is set, the assembler will skip loading the built-in default includes and only use the provided assembly file content.
+				// This allows users to have more control over their assembly code and avoid potential conflicts with default macros.
+				// Note: If --nodefaults is set, the assembler will not load any default macros, so users must ensure that their assembly code is self-contained and does not rely on any default macros.
+				// This option is useful for advanced users who want to have full control over their assembly code and do not want any predefined macros to interfere with their code.
+				// If --nodefaults is not set, the assembler will load the built-in default includes, which may contain useful macros for common operations, but may also cause conflicts if users define their own macros with the same names.
+				// Users should choose whether to use --nodefaults based on their specific needs and preferences for their assembly code.
+				// For most users, it is recommended to keep the default includes for convenience, unless they have specific reasons to avoid them.
+				ARG_nodefaults = true;
+			}
 
 			else {
 				// Handle unknown arguments
@@ -696,6 +721,16 @@ int main(int argc, char* argv[])
 		{
 			std::cout << "Error: Could not open assembly file: " << ARG_asmFilePath << "\n";
 			return 1; // Exit with an error code if the assembly file cannot be opened
+		}
+
+		if (!ARG_nodefaults) {
+			if (!loadDefaultIncludes()) {
+				std::cout << "Error: Failed to load default includes.\n";
+				return 1;
+			}
+		}
+		else if (ARG_verboseMode) {
+			std::cout << "Skipping loading default includes as --nodefaults is set.\n";
 		}
 
 		// Call the function to assemble the assembly code into binary instructions

@@ -1,10 +1,5 @@
 ; Hello World for IDKIWTEAPFF
-; The putc macro expands to the two instructions needed to print one ASCII char.
-
-%macro putc reg value
-    movi {reg}, {value}
-    out {reg}
-%endmacro
+; Uses default macros compiled into the emulator executable.
 
 start:
     ; "Hello World\n"
@@ -19,6 +14,6 @@ start:
     %putc r0 114
     %putc r0 108
     %putc r0 100
-    %putc r0 10
+    %newline r0
 
     hlt
