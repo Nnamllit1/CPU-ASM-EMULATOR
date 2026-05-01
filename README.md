@@ -146,6 +146,8 @@ label:
 | Instruction | Usage | Description | Opcode |
 | --- | --- | --- | --- |
 | hlt | | Halt the CPU | 0000000000001100 |
+| call | label | Call subroutine at label | 0000000000011111 |
+| ret | | Return to the last pushed call address | 0000000000100000 |
 
 ##### Stack
 

@@ -102,6 +102,8 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"jge",  {0x001c, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 	{"push", {0x001d, {OperandKind::Register}, EncodingKind::R}},
 	{"pop",  {0x001e, {OperandKind::Register}, EncodingKind::R}},
+	{"call", {0x001f, {OperandKind::Label}, EncodingKind::J}},
+	{"ret",  {0x0020, {}, EncodingKind::None}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -745,6 +747,17 @@ void execute(uint64_t instr) {
 		registers[rx] = readWord(SP);
 		SP += 2;
 		break;
+
+	case 0x001f: // call
+		SP -= 2;
+		writeWord(SP, PC + 1); // Push return address (next instruction) onto the stack
+		PC = sp; // Jump to the subroutine at the label address
+		return;
+
+	case 0x0020: // ret
+		PC = readWord(SP); // Pop return address from the stack and jump back
+		SP += 2;
+		return;
 
 	default:
 		std::cout << "Unknown opcode: " << op << "\n";
