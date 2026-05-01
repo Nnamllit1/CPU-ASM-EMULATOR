@@ -156,6 +156,11 @@ uint16_t encodeOperand(const std::string& token, OperandKind kind) {
 	}
 	case OperandKind::Immediate: {
 		// Convert immediate decimal string to integer.
+		auto it = labels.find(token); // I dont really understand what this code dose, but ai is great at writing code, so i will just assume this is correct and it allows us to use labels as immediates, which is a nice feature to have.
+		if (it != labels.end()) {
+			return static_cast<uint16_t>(it->second);
+		}
+
 		// Note: std::stoi throws if token is not a valid integer; caller will receive exception.
 		int value = std::stoi(token);
 		return static_cast<uint16_t>(value);
