@@ -7,7 +7,7 @@ This is a simple emulator and ASM compiler for the "IDK i want to emulate a proc
 - CPU: 16 bit
   - Registers: 32 registers
   - Instruction set: IDK yet :D
-- Memory: 64 KiB (or more? Maybe? But not implemented yet)
+- Memory: 64 KiB (Implemented now :D)
 - Instruction set:
 
 ## ASM Instructions
@@ -91,8 +91,18 @@ label:
 | jnz | rX, label | Jump to label if not zero | 0000000000001001 |
 | je | rX, rY, label | Jump to label if equal | 0000000000001010 |
 | jne | rX, rY, label | Jump to label if not equal | 0000000000001011 |
-| hlt | | Halt the CPU | 0000000000001111 |
-| out | rx | push contents of the register to stdout (as ascii character from decimal value, a = 97 and z = 122) | 0000000000010000 |
+| hlt | | Halt the CPU | 0000000000001100 |
+| out | rX | push contents of the register to stdout (as ascii character from decimal value, a = 97 and z = 122) | 0000000000001101 |
+| ld | rX, rY | Load register from memory (rX = memory[rY]) | 0000000000001110 |
+| ldi | rX, imm | Load immediate from memory (rX = memory[imm]) | 0000000000001111 |
+| st | rX, rY | Store register to memory (memory[rX] = rY) | 0000000000010000 |
+| sti | rX, imm | Store immediate to memory (memory[imm] = rX) | 0000000000010001 |
+
+More instructions will be added later.
+
+### Macros
+
+Macros are used to simplify the assembly code.
 
 More instructions will be added later.
 

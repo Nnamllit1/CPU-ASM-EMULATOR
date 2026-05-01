@@ -6,6 +6,7 @@
 #include <sstream>
 #include <bitset>
 #include <array>
+#include <algorithm>
 
 #include "defaultincludes.h"
 
@@ -82,7 +83,11 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"je",   {0x000a, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 	{"jne",  {0x000b, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 	{"hlt",  {0x000c, {}, EncodingKind::None}},
-	{"out",  {0x000d, {OperandKind::Register}, EncodingKind::R}}
+	{"out",  {0x000d, {OperandKind::Register}, EncodingKind::R}},
+	{"ld",   {0x000e, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"ldi",  {0x000f, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
+	{"st",   {0x0010, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"sti",  {0x0011, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -506,6 +511,19 @@ bool assemble() {
 std::vector<uint64_t> program; // Array to store the assembly program instructions (bits)
 int PC = 0; // Program Counter
 std::array<uint16_t, REGISTER_COUNT> registers; // Array to represent the registers in the CPU emulator (16-bit registers)
+uint8_t memory[65536]; // 64KB of memory for the CPU emulator (addressable by 16-bit addresses)
+
+// Function to read a 16-bit word from memory at the specified address (big-endian)
+uint16_t readWord(uint16_t addr) {
+	return (static_cast<uint16_t>(memory[addr]) << 8) |
+		static_cast<uint16_t>(memory[(addr + 1) & 0xFFFF]);
+}
+
+// Function to write a 16-bit word to memory at the specified address (big-endian)
+void writeWord(uint16_t addr, uint16_t value) {
+	memory[addr] = (value >> 8) & 0xFF;
+	memory[(addr + 1) & 0xFFFF] = value & 0xFF;
+}
 
 void execute(uint64_t instr) {
 	uint16_t op = (instr >> 48) & 0xFFFF;
@@ -601,6 +619,22 @@ void execute(uint64_t instr) {
 		if (registers[rx] <= 127) {
 			std::cout << static_cast<char>(registers[rx]);
 		}
+		break;
+
+	case 0x000e: // ld: rX = memory[rY]
+		registers[rx] = readWord(registers[ry]);
+		break;
+
+	case 0x000f: // ldi: rX = memory[imm]
+		registers[rx] = readWord(sp);
+		break;
+
+	case 0x0010: // st: memory[rX] = rY
+		writeWord(registers[rx], registers[ry]);
+		break;
+
+	case 0x0011: // sti: memory[imm] = rX
+		writeWord(sp, registers[rx]);
 		break;
 
 	default:
@@ -740,17 +774,33 @@ int main(int argc, char* argv[])
 		}
 	}
 	if (ARG_emulate) {
+		if (ARG_verboseMode) {
+			std::cout << "Emulation mode enabled. Starting emulation of the assembled binary...\n";
+		}
+
+
 		program = outputBinary;
 		PC = 0;
 		registers.fill(0); // Initialize all registers to zero before emulation
+		std::fill(std::begin(memory), std::end(memory), 0); // Initialize all memory to zero before emulation
+
+		if (ARG_verboseMode) {
+			std::cout << "Initial register state before emulation:\n";
+			for (int i = 0; i < REGISTER_COUNT; ++i) {
+				std::cout << "R" << i << ": " << std::bitset<16>(registers[i]) << ": " << registers[i] << "\n";
+			}
+		}
 
 		while (PC < program.size()) {
 			execute(program[PC]);
 		}
-		// After emulation, print the final state of the registers
-		std::cout << "Final register state after emulation:\n";
-		for (int i = 0; i < REGISTER_COUNT; ++i) {
-			std::cout << "R" << i << ": " << std::bitset<16>(registers[i]) << ": " << registers[i] << "\n";
+
+		if (ARG_verboseMode) {
+			// After emulation, print the final state of the registers
+			std::cout << "Final register state after emulation:\n";
+			for (int i = 0; i < REGISTER_COUNT; ++i) {
+				std::cout << "R" << i << ": " << std::bitset<16>(registers[i]) << ": " << registers[i] << "\n";
+			}
 		}
 	}
 	else
