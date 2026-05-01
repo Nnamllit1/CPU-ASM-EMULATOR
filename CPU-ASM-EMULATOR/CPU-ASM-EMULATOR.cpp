@@ -104,6 +104,7 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"pop",  {0x001e, {OperandKind::Register}, EncodingKind::R}},
 	{"call", {0x001f, {OperandKind::Label}, EncodingKind::J}},
 	{"ret",  {0x0020, {}, EncodingKind::None}},
+	{"outn", {0x0021, {OperandKind::Register}, EncodingKind::R}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -758,6 +759,10 @@ void execute(uint64_t instr) {
 		PC = readWord(SP); // Pop return address from the stack and jump back
 		SP += 2;
 		return;
+
+	case 0x0021: // outn
+		std::cout << registers[rx];
+		break;
 
 	default:
 		std::cout << "Unknown opcode: " << op << "\n";
