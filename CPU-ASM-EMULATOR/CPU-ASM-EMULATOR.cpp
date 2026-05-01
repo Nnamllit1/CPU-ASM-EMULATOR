@@ -42,7 +42,7 @@ struct Macro {
 std::map<std::string, Macro> macros;
 
 enum class EncodingKind { // Enum to represent the kind of instruction encoding based on the operand types
-	RR,   // opcode | rx | ry | rz | mode | 0
+	RR,   // opcode | rx | ry | 0  | mode | 0
 	RRR,  // opcode | rx | ry | rz | mode | 0
 	R,    // opcode | rx | 0  | 0  | mode | 0
 	RI,   // opcode | rx | 0  | 0  | mode | imm
@@ -92,6 +92,10 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"mul",  {0x0012, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
 	{"div",  {0x0013, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
 	{"mod",  {0x0014, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"and",  {0x0015, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"or",   {0x0016, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"xor",  {0x0017, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
+	{"not",  {0x0018, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -680,6 +684,22 @@ void execute(uint64_t instr) {
 			return;
 		}
 		registers[rx] = registers[ry] % registers[rz];
+		break;
+
+	case 0x0015: // and
+		registers[rx] = registers[ry] & registers[rz];
+		break;
+
+	case 0x0016: // or
+		registers[rx] = registers[ry] | registers[rz];
+		break;
+
+	case 0x0017: // xor
+		registers[rx] = registers[ry] ^ registers[rz];
+		break;
+
+	case 0x0018: // not
+		registers[rx] = ~registers[ry];
 		break;
 
 	default:

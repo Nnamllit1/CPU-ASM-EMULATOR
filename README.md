@@ -78,31 +78,67 @@ label:
 | --- | --- | --- | --- | --- | --- |
 | xxxxxxxxxxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxxxxxxxxxx |
 
-#### Basic instructions
+#### Instruction Reference
+
+##### Data movement
 
 | Instruction | Usage | Description | Opcode |
 | --- | --- | --- | --- |
 | movi | rX, imm | Move immediate to register | 0000000000000000 |
 | mov | rX, rY | Move register to register, but dosent clear the source register (just like a copy) | 0000000000000001 |
 | movc | rX, rY | Move register to register, clearing the source register | 0000000000000010 |
+
+##### Arithmetic and shifts
+
+| Instruction | Usage | Description | Opcode |
+| --- | --- | --- | --- |
 | add | rX, rY, rZ | Add registers (rX = rY + rZ) | 0000000000000011 |
 | sub | rX, rY, rZ | Subtract registers (rX = rY - rZ) | 0000000000000100 |
 | shl | rX, rY, rZ | Shift register left logically (rX = rY << rZ) | 0000000000000101 |
 | shr | rX, rY, rZ | Shift register right logically (rX = rY >> rZ) | 0000000000000110 |
+| mul | rX, rY, rZ | Multiply registers (rX = rY * rZ) | 0000000000010010 |
+| div | rX, rY, rZ | Divide registers (rX = rY / rZ) | 0000000000010011 |
+| mod | rX, rY, rZ | Modulo registers (rX = rY % rZ) | 0000000000010100 |
+
+##### Bitwise
+
+| Instruction | Usage | Description | Opcode |
+| --- | --- | --- | --- |
+| and | rX, rY, rZ | Bitwise and (rX = rY & rZ) | 0000000000010101 |
+| or | rX, rY, rZ | Bitwise or (rX = rY \| rZ) | 0000000000010110 |
+| xor | rX, rY, rZ | Bitwise xor (rX = rY ^ rZ) | 0000000000010111 |
+| not | rX, rY | Bitwise not (rX = ~rY) | 0000000000011000 |
+
+##### Jumps
+
+| Instruction | Usage | Description | Opcode |
+| --- | --- | --- | --- |
 | jmp | label | Jump to label | 0000000000000111 |
 | jz | rX, label | Jump to label if zero | 0000000000001000 |
 | jnz | rX, label | Jump to label if not zero | 0000000000001001 |
 | je | rX, rY, label | Jump to label if equal | 0000000000001010 |
 | jne | rX, rY, label | Jump to label if not equal | 0000000000001011 |
-| hlt | | Halt the CPU | 0000000000001100 |
-| out | rX | push contents of the register to stdout (as ascii character from decimal value, a = 97 and z = 122) | 0000000000001101 |
+
+##### Memory
+
+| Instruction | Usage | Description | Opcode |
+| --- | --- | --- | --- |
 | ld | rX, rY | Load register from memory (rX = memory[rY]) | 0000000000001110 |
 | ldi | rX, imm | Load immediate from memory (rX = memory[imm]) | 0000000000001111 |
 | st | rX, rY | Store register to memory (memory[rX] = rY) | 0000000000010000 |
 | sti | rX, imm | Store immediate to memory (memory[imm] = rX) | 0000000000010001 |
-| mul | rX, rY, rZ | Multiply registers (rX = rY * rZ) | 0000000000010010 |
-| div | rX, rY, rZ | Divide registers (rX = rY / rZ) | 0000000000010011 |
-| mod | rX, rY, rZ | Modulo registers (rX = rY % rZ) | 0000000000010100 |
+
+##### I/O
+
+| Instruction | Usage | Description | Opcode |
+| --- | --- | --- | --- |
+| out | rX | Push contents of the register to stdout as an ASCII character | 0000000000001101 |
+
+##### Control
+
+| Instruction | Usage | Description | Opcode |
+| --- | --- | --- | --- |
+| hlt | | Halt the CPU | 0000000000001100 |
 
 More instructions will be added later.
 
