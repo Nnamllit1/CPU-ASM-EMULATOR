@@ -7,7 +7,7 @@ This is a simple emulator and ASM compiler for the "IDK i want to emulate a proc
 - CPU: 16 bit
   - Registers: 32 registers
   - Instruction set: IDK yet :D
-- Memory: 64 KiB (or more? Maybe?)
+- Memory: 64 KiB (or more? Maybe? But not implemented yet)
 - Instruction set:
 
 ## ASM Instructions
@@ -92,5 +92,6 @@ label:
 | je | rX, rY, label | Jump to label if equal | 0000000000001010 |
 | jne | rX, rY, label | Jump to label if not equal | 0000000000001011 |
 | hlt | | Halt the CPU | 0000000000001111 |
+| out | rx | push contents of the register to stdout (as ascii character from decimal value, a = 97 and z = 122) | 0000000000010000 |
 
 More instructions will be added later.

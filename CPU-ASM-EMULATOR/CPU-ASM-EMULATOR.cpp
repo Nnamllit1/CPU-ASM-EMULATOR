@@ -16,7 +16,7 @@ const int REGISTER_SIZE = 16; // Size of each register in bits
 
 bool ARG_verboseMode = false; // Global variable to track verbose mode TODO: make this false by default, but for testing purposes, it's set to true for now
 bool ARG_asmMode = false; // Global variable to track assembly mode (so if we need to asmbl)
-char* ARG_asmFilePath = nullptr; // Global variable to store the assembly file path
+const char* ARG_asmFilePath = nullptr; // Non-owning pointer to the assembly file path argument
 bool ARG_outbin = false; // Global variable to track if the user wants to output the assembled binary
 bool ARG_emulate = false; // Global variable to track if the user wants to emulate the assembled binary
 
@@ -30,6 +30,7 @@ std::string asmFileContent = ""; // Variable to store the content of the assembl
 
 enum class EncodingKind { // Enum to represent the kind of instruction encoding based on the operand types
 	RR,   // opcode | rx | ry | 0
+	R,    // opcode | rx | 0  | 0
 	RI,   // opcode | rx | 0  | imm
 	J,    // opcode | 0  | 0  | label
 	JC,   // opcode | rx | 0  | label (conditional jump based on register value)
@@ -68,7 +69,8 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"jnz",  {0x0009, {OperandKind::Register, OperandKind::Label}, EncodingKind::JC}},
 	{"je",   {0x000a, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 	{"jne",  {0x000b, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
-	{"hlt", {0x000c, {}, EncodingKind::None}},
+	{"hlt",  {0x000c, {}, EncodingKind::None}},
+	{"out",  {0x000d, {OperandKind::Register}, EncodingKind::R}}
 };
 // Function to initialize register names and their corresponding register numbers
 void initializeRegisterNames() {
@@ -152,6 +154,10 @@ uint64_t encodeInstruction(const ParsedInstruction& ins) {
 	case EncodingKind::RR:
 		a = encodeOperand(ins.operands[0], def.operands[0]); // Rx
 		b = encodeOperand(ins.operands[1], def.operands[1]); // Ry
+		break;
+
+	case EncodingKind::R:
+		a = encodeOperand(ins.operands[0], def.operands[0]); // Rx
 		break;
 
 	case EncodingKind::RI:
@@ -434,6 +440,16 @@ void execute(uint64_t instr) {
 		PC = program.size();
 		return;
 
+	case 0x000d: // out
+		if (ARG_verboseMode) { // If verbose mode is enabled, print the output of the register in binary format for better visibility of the register state.
+			std::cout << "Output instruction: R" << rx << " = " << std::bitset<16>(registers[rx]) << "\n";
+		}
+		// Print the output of the register in ascii character format if the value is a valid ASCII code (0-127)
+		if (registers[rx] <= 127) {
+			std::cout << static_cast<char>(registers[rx]);
+		}
+		break;
+
 	default:
 		std::cout << "Unknown opcode: " << op << "\n";
 		break;
@@ -546,7 +562,6 @@ int main(int argc, char* argv[])
 			std::cout << "Error: Assembly failed.\n";
 			return 1; // Exit with an error code if assembly fails
 		}
-		std::free(ARG_asmFilePath); // Free the memory allocated for the assembly file path
 	}
 	if (ARG_emulate) {
 		program = outputBinary;
