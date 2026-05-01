@@ -28,6 +28,15 @@ std::vector<uint64_t> outputBinary; // Vector to store the output binary instruc
 std::map <std::string, int16_t> registerNames = {}; // Map to store register names and their corresponding register numbers (e.g., "R0" -> 0000000000000000, "R1" -> 0000000000000001, ..., "R31" -> ...)
 std::string asmFileContent = ""; // Variable to store the content of the assembly file as a string
 
+// Stores one macro definition after parsing `%macro name param...`.
+// Body lines are kept as source text, then expanded before labels/instructions are processed.
+struct Macro {
+	std::vector<std::string> params;
+	std::vector<std::string> body;
+};
+
+std::map<std::string, Macro> macros;
+
 enum class EncodingKind { // Enum to represent the kind of instruction encoding based on the operand types
 	RR,   // opcode | rx | ry | 0
 	R,    // opcode | rx | 0  | 0
@@ -72,6 +81,7 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"hlt",  {0x000c, {}, EncodingKind::None}},
 	{"out",  {0x000d, {OperandKind::Register}, EncodingKind::R}}
 };
+
 // Function to initialize register names and their corresponding register numbers
 void initializeRegisterNames() {
 	// Create register name keys "R0".."R31" and map to their numeric index.
@@ -287,6 +297,116 @@ bool processInstruction() {
 	return true;
 }
 
+// Function to process macros in the assembly code
+bool processMacros() {
+	std::istringstream iss(asmFileContent);
+	std::ostringstream expanded;
+	std::string line;
+
+	bool inMacro = false;
+	std::string currentMacroName;
+	Macro currentMacro;
+
+	while (std::getline(iss, line)) {
+		line = trim(line);
+
+		if (line.empty()) {
+			continue;
+		}
+
+		ParsedInstruction parsed = parseLine(line);
+
+		if (parsed.mnemonic == "%macro") {
+			if (inMacro) {
+				std::cout << "Nested macro definitions are not supported.\n";
+				return false;
+			}
+			if (parsed.operands.empty()) {
+				std::cout << "Macro definition requires a name.\n";
+				return false;
+			}
+
+			inMacro = true;
+			currentMacroName = parsed.operands[0];
+			for (char& c : currentMacroName) {
+				c = std::tolower(c);
+			}
+			currentMacro = Macro{};
+
+			// Remaining `%macro` operands are parameter names used as `{param}` placeholders.
+			for (size_t i = 1; i < parsed.operands.size(); ++i) {
+				currentMacro.params.push_back(parsed.operands[i]);
+			}
+
+			continue;
+		}
+
+		if (parsed.mnemonic == "%endmacro") {
+			if (!inMacro) {
+				std::cout << "%endmacro found without a matching %macro.\n";
+				return false;
+			}
+
+			macros[currentMacroName] = currentMacro;
+			inMacro = false;
+			continue;
+		}
+
+		if (inMacro) {
+			// Do not parse macro body instructions yet. They may contain placeholders
+			// that only become valid assembly once the macro is invoked.
+			currentMacro.body.push_back(line);
+			continue;
+		}
+
+		if (!line.empty() && line[0] == '%') {
+			// A non-definition `%name ...` line invokes a previously defined macro.
+			std::string macroName = parsed.mnemonic.substr(1);
+
+			auto it = macros.find(macroName);
+			if (it == macros.end()) {
+				std::cout << "Unknown macro: " << macroName << "\n";
+				return false;
+			}
+
+			const Macro& macro = it->second;
+
+			if (parsed.operands.size() != macro.params.size()) {
+				std::cout << "Wrong argument count for macro: " << macroName << "\n";
+				return false;
+			}
+
+			for (std::string bodyLine : macro.body) {
+				for (size_t i = 0; i < macro.params.size(); ++i) {
+					std::string needle = "{" + macro.params[i] + "}";
+					size_t pos = 0;
+
+					// Replace every `{param}` placeholder with the corresponding call argument.
+					while ((pos = bodyLine.find(needle, pos)) != std::string::npos) {
+						bodyLine.replace(pos, needle.size(), parsed.operands[i]);
+						pos += parsed.operands[i].size();
+					}
+				}
+
+				expanded << bodyLine << "\n";
+			}
+
+			continue;
+		}
+
+		expanded << line << "\n";
+	}
+
+	if (inMacro) {
+		std::cout << "Unterminated macro definition: " << currentMacroName << "\n";
+		return false;
+	}
+
+	asmFileContent = expanded.str();
+	return true;
+}
+
+
 // Assembler function to convert assembly code into binary instructions (64-bit)
 bool assemble() {
 	if (asmFileContent == "") return false; // Return false if the assembly file content is empty
@@ -304,8 +424,16 @@ bool assemble() {
 	}
 	asmFileContent = cleanedContent;
 
-	// First pass: Process labels and store their corresponding line numbers (Program counter position) in the labels map
-	asmFileContent = trim(asmFileContent); // Trim whitespace from the assembly file content
+	// First pass: Process macros
+	if (ARG_verboseMode) {
+		std::cout << "Processing macros in the assembly code...\n";
+	}
+	if (!processMacros()) {
+		std::cout << "Error: Failed to process macros in the assembly code.\n";
+		return false; // Return false if macro processing fails
+	}
+
+	// Second pass: Process labels and store their corresponding line numbers (Program counter position) in the labels map
 	if (asmFileContent == "") {
 		std::cout << "Error: Assembly file content is empty after trimming whitespace.\n";
 		return false; // Return false if the assembly file content is empty
@@ -450,7 +578,7 @@ void execute(uint64_t instr) {
 
 	case 0x000c: // hlt
 		std::cout << "HLT encountered. Stopping execution.\n\n";
-		PC = program.size();
+		PC = static_cast<int>(program.size());
 		return;
 
 	case 0x000d: // out

@@ -102,19 +102,41 @@ The assembler is a simple text-based assembler.
 
 ### Syntax
 
-- Comments start with a semicolon `;`
-- Labels are case sensitive
-- Labels are followed by a colon `:`
-- Labels are followed by the instruction to be executed
+#### Comments
 
-### Example
+Comments are denoted by a `;` at the beginning of the line.
+Comments can be placed anywhere in the line.
+
+##### Example
 
 ``` asm
 ; This is a comment
+```
 
+#### Labels
+
+Labels are denoted by a `:` at the end of the line.
+Labels can be placed anywhere in the line.
+
+##### Example
+
+``` asm
 start:
-    mov r0, r1
-    add r0, r2
-    sub r0, r3
-    jmp start
+```
+
+#### Macros
+
+Macros are denoted by a `%` at the beginning of the line.
+Macros can be placed anywhere in the line.
+
+##### Example
+
+``` asm
+%macro putc reg value
+    movi {reg}, {value}
+    out {reg}
+%endmacro
+
+%putc r0 97
+hlt
 ```
