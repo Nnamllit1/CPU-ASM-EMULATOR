@@ -118,6 +118,10 @@ label:
 | jnz | rX, label | Jump to label if not zero | 0000000000001001 |
 | je | rX, rY, label | Jump to label if equal | 0000000000001010 |
 | jne | rX, rY, label | Jump to label if not equal | 0000000000001011 |
+| jlt | rX, rY, label | Jump to label if less than | 0000000000011001 |
+| jle | rX, rY, label | Jump to label if less than or equal | 0000000000011010 |
+| jgt | rX, rY, label | Jump to label if greater than | 0000000000011011 |
+| jge | rX, rY, label | Jump to label if greater than or equal | 0000000000011100 |
 
 ##### Memory
 

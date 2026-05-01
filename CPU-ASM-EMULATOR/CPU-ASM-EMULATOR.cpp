@@ -96,6 +96,10 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"or",   {0x0016, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
 	{"xor",  {0x0017, {OperandKind::Register, OperandKind::Register, OperandKind::Register}, EncodingKind::RRR}},
 	{"not",  {0x0018, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"jlt",  {0x0019, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
+	{"jle",  {0x001a, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
+	{"jgt",  {0x001b, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
+	{"jge",  {0x001c, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -700,6 +704,33 @@ void execute(uint64_t instr) {
 
 	case 0x0018: // not
 		registers[rx] = ~registers[ry];
+		break;
+
+	case 0x0019: // jlt
+		if (registers[rx] < registers[ry]) {
+			PC = sp;
+			return;
+		}
+		break;
+
+	case 0x001a: // jle
+		if (registers[rx] <= registers[ry]) {
+			PC = sp;
+			return;
+		}
+
+	case 0x001b: // jgt
+		if (registers[rx] > registers[ry]) {
+			PC = sp;
+			return;
+		}
+		break;
+
+	case 0x001c: // jge
+		if (registers[rx] >= registers[ry]) {
+			PC = sp;
+			return;
+		}
 		break;
 
 	default:
