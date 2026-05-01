@@ -34,6 +34,15 @@ std::vector<uint64_t> outputBinary; // Vector to store the output binary instruc
 std::map <std::string, int16_t> registerNames = {}; // Map to store register names and their corresponding register numbers (e.g., "R0" -> 0000000000000000, "R1" -> 0000000000000001, ..., "R31" -> ...)
 std::string asmFileContent = ""; // Variable to store the content of the assembly file as a string
 
+// Struct to represent a chunk of ROM, which can be either an instruction or a raw byte (e.g., from a .byte directive). This is used during the assembly process to keep track of what needs to be emitted into the final instruction ROM.
+struct RomChunk {
+	bool isInstruction;
+	uint64_t instruction;
+	uint8_t byte;
+};
+
+std::vector<RomChunk> outputRom;
+
 // Stores one macro definition after parsing `%macro name param...`.
 // Body lines are kept as source text, then expanded before labels/instructions are processed.
 struct Macro {
@@ -315,6 +324,10 @@ bool processLabels() {
 			// Extract the label name by removing the trailing ':' and store the current ROM byte address.
 			std::string labelName = line.substr(0, line.size() - 1); // Extract the label name by removing the trailing ':'
 			labels[labelName] = romAddress; // Map the label name to the current ROM byte address.
+		} else if (line.rfind(".byte", 0) == 0) {
+			// For now, each .byte line emits exactly one byte into ROM.
+			romAddress = static_cast<uint16_t>(romAddress + 1);
+
 		} else {
 			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
 		}
@@ -322,12 +335,13 @@ bool processLabels() {
 	return true; // Return true if labels are processed successfully, false otherwise
 }
 
-// Function to convert an assembly instruction line into a binary instruction (64-bit) and store it in the outputBinary vector
+// Function to convert assembly source lines into ROM chunks.
+// Instructions become 64-bit chunks, while data directives like `.byte` become raw byte chunks.
 bool processInstruction() {
 	std::istringstream iss(asmFileContent);
 	std::string line;
 
-	// Second pass: read each non-label line, parse it and encode into binary.
+	// Second pass: read each non-label line and emit the matching ROM chunk.
 	while (std::getline(iss, line)) {
 		line = trim(line);
 		// Skip empty lines and label definitions (already handled in first pass).
@@ -337,9 +351,25 @@ bool processInstruction() {
 
 		try {
 			ParsedInstruction ins = parseLine(line);
+
+			if (ins.mnemonic == ".byte") {
+				if (ins.operands.size() != 1) {
+					throw std::runtime_error(".byte requires exactly one value");
+				}
+
+				int value = std::stoi(ins.operands[0]);
+				if (value < 0 || value > 255) {
+					throw std::runtime_error(".byte value must be between 0 and 255");
+				}
+
+				outputRom.push_back({ false, 0, static_cast<uint8_t>(value) });
+				continue;
+			}
+
 			uint64_t encoded = encodeInstruction(ins);
-			// Append the encoded 64-bit instruction to the output vector.
+			// Keep instruction-only output for verbose dumps and --outbin.
 			outputBinary.push_back(encoded);
+			outputRom.push_back({ true, encoded, 0 });
 		}
 		catch (const std::exception& e) {
 			// Propagate error details including the source line for easier debugging.
@@ -561,20 +591,30 @@ bool loadInstructionRom() {
 	instructionRomSize = 0;
 	std::fill(std::begin(instructionRom), std::end(instructionRom), 0);
 
-	for (uint64_t instr : outputBinary) {
-		if (instructionRomSize + INSTRUCTION_SIZE_BYTES > ADDRESS_SPACE_SIZE) {
-			std::cout << "Error: Instruction ROM is full.\n";
-			return false;
-		}
+	for (const RomChunk& chunk : outputRom) {
+		if (chunk.isInstruction) {
+			if (instructionRomSize + INSTRUCTION_SIZE_BYTES > ADDRESS_SPACE_SIZE) {
+				std::cout << "Error: Instruction ROM is full.\n";
+				return false;
+			}
 
-		// Store the 64-bit instruction in big-endian byte order.
-		// This keeps ROM byte 0 equal to the first printed bit/byte of the opcode.
-		for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
-			int shift = (INSTRUCTION_SIZE_BYTES - 1 - byte) * 8;
-			instructionRom[instructionRomSize + byte] = static_cast<uint8_t>((instr >> shift) & 0xFF);
-		}
+			// Store the 64-bit instruction in big-endian byte order.
+			// This keeps ROM byte 0 equal to the first printed bit/byte of the opcode.
+			for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
+				int shift = (INSTRUCTION_SIZE_BYTES - 1 - byte) * 8;
+				instructionRom[instructionRomSize + byte] = static_cast<uint8_t>((chunk.instruction >> shift) & 0xFF);
+			}
 
-		instructionRomSize += INSTRUCTION_SIZE_BYTES;
+			instructionRomSize += INSTRUCTION_SIZE_BYTES;
+		} else {
+			if (instructionRomSize + 1 > ADDRESS_SPACE_SIZE) {
+				std::cout << "Error: Instruction ROM is full.\n";
+				return false;
+			}
+
+			instructionRom[instructionRomSize] = chunk.byte;
+			instructionRomSize += 1;
+		}
 	}
 
 	return true;
@@ -817,8 +857,8 @@ void execute(uint64_t instr) {
 	{
 		uint16_t addr = registers[rx];
 
-		while (memory[addr] != 0) {
-			std::cout << static_cast<char>(memory[addr]);
+		while (addr < instructionRomSize && instructionRom[addr] != 0) {
+			std::cout << static_cast<char>(instructionRom[addr]);
 			addr = static_cast<uint16_t>(addr + 1);
 		}
 		break;
