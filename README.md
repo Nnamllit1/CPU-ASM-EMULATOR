@@ -9,8 +9,10 @@ This is a project that may actually be actively be worked on by me for longer th
 - CPU: 16 bit
   - Registers: 32 registers
   - Register fields in instructions are 8 bits wide
+  - Program counter addresses instruction ROM by byte
   - Instruction set: IDK yet :D
-- Memory: 64 KiB (Implemented now :D)
+- RAM: 64 KiB (Implemented now :D)
+- Instruction ROM: 64 KiB address space, with 8 bytes per instruction
 - Instruction set:
 
 ## ASM Instructions
@@ -64,6 +66,7 @@ Instructions are 64 bits long.
 
 Labels are used to mark a position in the code.
 Labels are used to jump to a position in the code.
+Instruction labels resolve to byte addresses in instruction ROM. Since instructions are 8 bytes long, consecutive instruction labels are 8 bytes apart.
 
 ##### Example
 

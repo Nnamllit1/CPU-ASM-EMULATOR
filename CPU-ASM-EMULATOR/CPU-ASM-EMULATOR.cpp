@@ -13,6 +13,7 @@
 // CPU-ASM-EMULATOR CONFIG
 const int8_t REGISTER_COUNT = 32; // Number of registers in the CPU emulator
 const int REGISTER_SIZE = 16; // Size of each register in bits
+const int INSTRUCTION_SIZE_BYTES = 8; // Each encoded instruction is 64 bits.
 
 
 // Global variables to track modes and file paths
@@ -27,7 +28,7 @@ bool ARG_nodefaults = false; // Global variable to track if the user wants to sk
 
 // Assembly variables
 
-std::map <std::string, int16_t> labels = {}; // Map to store labels and their corresponding line numbers (Program counter position)
+std::map <std::string, uint16_t> labels = {}; // Map to store labels and their corresponding ROM byte addresses.
 std::vector<uint64_t> outputBinary; // Vector to store the output binary instructions (bits)
 std::map <std::string, int16_t> registerNames = {}; // Map to store register names and their corresponding register numbers (e.g., "R0" -> 0000000000000000, "R1" -> 0000000000000001, ..., "R31" -> ...)
 std::string asmFileContent = ""; // Variable to store the content of the assembly file as a string
@@ -145,7 +146,7 @@ uint16_t encodeOperand(const std::string& token, OperandKind kind) {
 	// Encode a single operand depending on its declared kind:
 	// - Register: resolve register name to index (0..REGISTER_COUNT-1)
 	// - Immediate: convert decimal numeric string to uint16_t via std::stoi
-	// - Label: lookup label -> instruction index (from first pass)
+	// - Label: lookup label -> ROM byte address (from first pass)
 	// - None: zero
 	switch (kind) {
 	case OperandKind::Register: {
@@ -167,7 +168,7 @@ uint16_t encodeOperand(const std::string& token, OperandKind kind) {
 	}
 	case OperandKind::Label: {
 		// Labels are resolved during the first pass and stored in `labels`.
-		// The label value is the instruction index (program counter position).
+		// The label value is a ROM byte address.
 		auto it = labels.find(token);
 		if (it == labels.end()) throw std::runtime_error("Unknown label: " + token);
 		return static_cast<uint16_t>(it->second);
@@ -303,19 +304,18 @@ ParsedInstruction parseLine(const std::string& rawLine) {
 bool processLabels() {
 	std::istringstream iss(asmFileContent);
 	std::string line;
-	int lineNumber = 0; // Line number to track the position of instructions for labels
+	uint16_t romAddress = 0; // Byte address of the next instruction in ROM.
 	while (std::getline(iss, line)) {
 		line = trim(line); // Trim whitespace from the line
 		if (line.empty()) {
 			continue; // Skip empty lines
 		}
 		if (line.back() == ':') { // Check if the line is a label (ends with ':')
-			// Extract the label name by removing the trailing ':' and store the current instruction index.
-			// Note: we use instruction index (lineNumber) so labels point to the correct PC location.
+			// Extract the label name by removing the trailing ':' and store the current ROM byte address.
 			std::string labelName = line.substr(0, line.size() - 1); // Extract the label name by removing the trailing ':'
-			labels[labelName] = lineNumber; // Map the label name to the current line number (program counter position)
+			labels[labelName] = romAddress; // Map the label name to the current ROM byte address.
 		} else {
-			lineNumber++; // Increment line number for each instruction line (non-label)
+			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
 		}
 	}
 	return true; // Return true if labels are processed successfully, false otherwise
@@ -496,7 +496,7 @@ bool assemble() {
 		if (ARG_verboseMode) {
 			std::cout << "Labels processed successfully. Labels found:\n";
 			for (const auto& label : labels) {
-				std::cout << "Label: " << label.first << ", Line Number: " << label.second << "\n";
+				std::cout << "Label: " << label.first << ", ROM Address: " << label.second << "\n";
 			}
 		}
 	}
@@ -548,11 +548,12 @@ bool assemble() {
 
 // CPU emulator variables
 
-std::vector<uint64_t> program; // Array to store the assembly program instructions (bits)
-int PC = 0; // Program Counter
+std::vector<uint64_t> instructionRom; // Decoded view of instruction ROM, one 64-bit instruction per entry.
+uint16_t PC = 0; // Program Counter, as a byte address into instruction ROM.
 std::array<uint16_t, REGISTER_COUNT> registers; // Array to represent the registers in the CPU emulator (16-bit registers)
 uint8_t memory[65536]; // 64KB of memory for the CPU emulator (addressable by 16-bit addresses)
 uint16_t SP = 0; // Stack Pointer
+bool CPU_halted = false; // Tracks whether execution has stopped.
 
 // Function to read a 16-bit word from memory at the specified address (big-endian)
 uint16_t readWord(uint16_t addr) {
@@ -588,7 +589,7 @@ void execute(uint64_t instr) {
 			<< " RY=" << static_cast<int>(ry)
 			<< " RZ=" << static_cast<int>(rz)
 			<< " MODE=" << static_cast<int>(mode)
-			<< " SP=" << sp << "\n";
+			<< " SPECIAL=" << sp << "\n";
 	}
 
 	switch (op) {
@@ -655,7 +656,7 @@ void execute(uint64_t instr) {
 
 	case 0x000c: // hlt
 		std::cout << "HLT encountered. Stopping execution.\n\n";
-		PC = static_cast<int>(program.size());
+		CPU_halted = true;
 		return;
 
 	case 0x000d: // out
@@ -691,7 +692,7 @@ void execute(uint64_t instr) {
 	case 0x0013: // div
 		if (registers[rz] == 0) {
 			std::cout << "Division by zero. Stopping execution.\n";
-			PC = static_cast<int>(program.size());
+			CPU_halted = true;
 			return;
 		}
 		registers[rx] = registers[ry] / registers[rz];
@@ -700,7 +701,7 @@ void execute(uint64_t instr) {
 	case 0x0014: // mod
 		if (registers[rz] == 0) {
 			std::cout << "Modulo by zero. Stopping execution.\n";
-			PC = static_cast<int>(program.size());
+			CPU_halted = true;
 			return;
 		}
 		registers[rx] = registers[ry] % registers[rz];
@@ -734,6 +735,7 @@ void execute(uint64_t instr) {
 			PC = sp;
 			return;
 		}
+		break;
 
 	case 0x001b: // jgt
 		if (registers[rx] > registers[ry]) {
@@ -761,7 +763,7 @@ void execute(uint64_t instr) {
 
 	case 0x001f: // call
 		SP -= 2;
-		writeWord(SP, PC + 1); // Push return address (next instruction) onto the stack
+		writeWord(SP, static_cast<uint16_t>(PC + INSTRUCTION_SIZE_BYTES)); // Push return address onto the stack.
 		PC = sp; // Jump to the subroutine at the label address
 		return;
 
@@ -806,7 +808,7 @@ void execute(uint64_t instr) {
 		break;
 	}
 
-	PC++;
+	PC = static_cast<uint16_t>(PC + INSTRUCTION_SIZE_BYTES);
 }
 
 
@@ -943,8 +945,9 @@ int main(int argc, char* argv[])
 		}
 
 
-		program = outputBinary;
+		instructionRom = outputBinary;
 		PC = 0;
+		CPU_halted = false;
 		registers.fill(0); // Initialize all registers to zero before emulation
 		std::fill(std::begin(memory), std::end(memory), 0); // Initialize all memory to zero before emulation
 		SP = 0xFFFE; // Initialize stack pointer to the end of memory (growing downwards)
@@ -957,8 +960,8 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		while (PC < program.size()) {
-			execute(program[PC]);
+		while (!CPU_halted && (PC / INSTRUCTION_SIZE_BYTES) < instructionRom.size()) {
+			execute(instructionRom[PC / INSTRUCTION_SIZE_BYTES]);
 		}
 
 		if (ARG_verboseMode) {
