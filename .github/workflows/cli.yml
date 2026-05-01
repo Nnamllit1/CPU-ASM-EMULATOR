@@ -1,0 +1,123 @@
+# Disclaimer:
+# This workflow was created with help from an AI agent because the maintainer
+# chose the sensible lazy route instead of hand-rolling YAML by candlelight.
+
+name: CLI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-test-release:
+    name: Build, Smoke Test, and Release
+    runs-on: windows-latest
+
+    env:
+      CONFIGURATION: Release
+      PLATFORM: x64
+      EXE_PATH: x64\Release\CPU-ASM-EMULATOR.exe
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build
+        shell: pwsh
+        run: >
+          msbuild CPU-ASM-EMULATOR.slnx
+          /p:Configuration=${{ env.CONFIGURATION }}
+          /p:Platform=${{ env.PLATFORM }}
+          /p:PlatformToolset=v143
+          /m
+
+      - name: Smoke test CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = Join-Path $PWD "${{ env.EXE_PATH }}"
+
+          if (-not (Test-Path $exe)) {
+            throw "Executable was not built: $exe"
+          }
+
+          $help = & $exe --help
+          if ($LASTEXITCODE -ne 0 -or ($help -join "`n") -notmatch "Usage: CPU-ASM-EMULATOR") {
+            throw "--help did not print the expected usage text."
+          }
+
+          $version = & $exe --version
+          if ($LASTEXITCODE -ne 0 -or ($version -join "`n") -notmatch "CPU-ASM-EMULATOR version") {
+            throw "--version did not print the expected version text."
+          }
+
+          $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("cpu-asm-emulator-" + [System.Guid]::NewGuid())
+          New-Item -ItemType Directory -Path $tempDir | Out-Null
+
+          try {
+            $asmPath = Join-Path $tempDir "hello.asm"
+            @(
+              "start:",
+              "    %putc r0 72",
+              "    %putc r0 105",
+              "    %newline r0",
+              "    hlt"
+            ) | Set-Content -Path $asmPath -Encoding ascii
+
+            $outbin = & $exe --asm $asmPath --outbin
+            if ($LASTEXITCODE -ne 0) {
+              throw "Assembler returned exit code $LASTEXITCODE."
+            }
+
+            $binaryLines = @($outbin | Where-Object { $_ -match "^[01]{64}$" })
+            if ($binaryLines.Count -ne 7) {
+              throw "Expected 7 encoded instructions from macro expansion, got $($binaryLines.Count)."
+            }
+
+            if ($binaryLines[0] -ne "0000000000000000000000000000000000000000000000000000000001001000") {
+              throw "First instruction was not 'movi r0, 72'."
+            }
+
+            $run = & $exe --asm $asmPath --emulate
+            if ($LASTEXITCODE -ne 0) {
+              throw "Emulator returned exit code $LASTEXITCODE."
+            }
+
+            if (($run -join "`n") -notmatch "Hi") {
+              throw "Emulator output did not contain the expected text."
+            }
+          }
+          finally {
+            Remove-Item -LiteralPath $tempDir -Recurse -Force
+          }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Copy-Item -LiteralPath "${{ env.EXE_PATH }}" -Destination "dist\CPU-ASM-EMULATOR.exe"
+          Compress-Archive -Path "dist\CPU-ASM-EMULATOR.exe" -DestinationPath "dist\CPU-ASM-EMULATOR-windows-x64.zip" -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CPU-ASM-EMULATOR-windows-x64
+          path: dist/CPU-ASM-EMULATOR-windows-x64.zip
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/CPU-ASM-EMULATOR-windows-x64.zip
