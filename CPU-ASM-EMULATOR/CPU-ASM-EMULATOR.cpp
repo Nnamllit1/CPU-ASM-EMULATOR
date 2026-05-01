@@ -106,6 +106,10 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"ret",  {0x0020, {}, EncodingKind::None}},
 	{"outn", {0x0021, {OperandKind::Register}, EncodingKind::R}},
 	{"outs", {0x0022, {OperandKind::Register}, EncodingKind::R}},
+	{"ldb",  {0x0023, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"stb",  {0x0024, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"ldbi", {0x0025, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
+	{"stbi", {0x0026, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -766,12 +770,30 @@ void execute(uint64_t instr) {
 		break;
 
 	case 0x0022: // outs
+	{
 		uint16_t addr = registers[rx];
 
 		while (memory[addr] != 0) {
 			std::cout << static_cast<char>(memory[addr]);
 			addr = static_cast<uint16_t>(addr + 1);
 		}
+		break;
+	}
+
+	case 0x0023: // ldb: rX = memory[rY] (byte)
+		registers[rx] = memory[registers[ry]];
+		break;
+
+	case 0x0024: // stb: memory[rX] = rY (byte)
+		memory[registers[rx]] = registers[ry] & 0xFF;
+		break;
+
+	case 0x0025: // ldbi: rX = memory[imm] (byte)
+		registers[rx] = memory[sp];
+		break;
+
+	case 0x0026: // stbi: memory[imm] = rX (byte)
+		memory[sp] = registers[rx] & 0xFF;
 		break;
 
 	default:

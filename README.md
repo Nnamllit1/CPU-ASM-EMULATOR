@@ -134,6 +134,10 @@ label:
 | ldi | rX, imm | Load immediate from memory (rX = memory[imm]) | 0000000000001111 |
 | st | rX, rY | Store register to memory (memory[rX] = rY) | 0000000000010000 |
 | sti | rX, imm | Store immediate to memory (memory[imm] = rX) | 0000000000010001 |
+| ldb | rX, rY | Load byte from memory (rX = memory[rY]) | 0000000000100011 |
+| stb | rX, rY | Store byte to memory (memory[rX] = rY & 0xFF) | 0000000000100100 |
+| ldbi | rX, imm | Load byte from immediate memory address (rX = memory[imm]) | 0000000000100101 |
+| stbi | rX, imm | Store byte to immediate memory address (memory[imm] = rX & 0xFF) | 0000000000100110 |
 
 ##### I/O
 
