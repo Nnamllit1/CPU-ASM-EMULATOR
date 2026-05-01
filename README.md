@@ -2,6 +2,8 @@
 
 This is a simple emulator and ASM compiler for the "IDK i want to emulate a processor for fun" processor (or IDKIWTEAPFF for short).
 
+This is a project that may actually be actively be worked on by me for longer than 2 weeks.
+
 ## Specifications
 
 - CPU: 16 bit
