@@ -121,6 +121,8 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"stb",  {0x0024, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"ldbi", {0x0025, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 	{"stbi", {0x0026, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
+	{"ldbr", {0x0027, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"ldbri",{0x0028, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -327,6 +329,26 @@ bool processLabels() {
 		} else if (line.rfind(".byte", 0) == 0) {
 			// For now, each .byte line emits exactly one byte into ROM.
 			romAddress = static_cast<uint16_t>(romAddress + 1);
+		} else if (line.rfind(".asciiz", 0) == 0) {
+			// .asciiz "string" emits the raw bytes of the string followed by a null terminator.
+			size_t firstQuote = line.find('"');
+			size_t lastQuote = line.find_last_of('"');
+
+			if (firstQuote != std::string::npos && lastQuote != std::string::npos && lastQuote > firstQuote) {
+				romAddress = static_cast<uint16_t>(romAddress + (lastQuote - firstQuote - 1) + 1);
+			}
+		} else if (line.rfind(".ascii", 0) == 0) {
+			// .ascii "string" emits the raw bytes of the string without a null terminator.
+			size_t firstQuote = line.find('"');
+			size_t lastQuote = line.find_last_of('"');
+
+			if (firstQuote != std::string::npos && lastQuote != std::string::npos && lastQuote > firstQuote) {
+				romAddress = static_cast<uint16_t>(romAddress + (lastQuote - firstQuote - 1));
+			}
+
+		} else if (line.rfind(".word", 0) == 0) {
+			// .word emits one 16-bit value into ROM as two bytes.
+			romAddress = static_cast<uint16_t>(romAddress + 2);
 
 		} else {
 			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
@@ -352,7 +374,7 @@ bool processInstruction() {
 		try {
 			ParsedInstruction ins = parseLine(line);
 
-			if (ins.mnemonic == ".byte") {
+			if (ins.mnemonic == ".byte") { // Handle .byte directive to emit a single byte into ROM.
 				if (ins.operands.size() != 1) {
 					throw std::runtime_error(".byte requires exactly one value");
 				}
@@ -364,7 +386,57 @@ bool processInstruction() {
 
 				outputRom.push_back({ false, 0, static_cast<uint8_t>(value) });
 				continue;
+
+			} else if (ins.mnemonic == ".asciiz") { // Handle .asciiz directive to emit the raw bytes of a string followed by a null terminator into ROM.
+				size_t firstQuote = line.find('"');
+				size_t lastQuote = line.find_last_of('"');
+
+				if (firstQuote == std::string::npos || lastQuote == std::string::npos || lastQuote <= firstQuote) {
+					throw std::runtime_error(".asciiz requires quoted text");
+				}
+
+				std::string text = line.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+
+				for (char c : text) {
+					outputRom.push_back({ false, 0, static_cast<uint8_t>(c) });
+				}
+
+				outputRom.push_back({ false, 0, 0 });
+				continue;
+			
+			} else if (ins.mnemonic == ".ascii") { // Handle .ascii directive to emit the raw bytes of a string into ROM.
+				size_t firstQuote = line.find('"');
+				size_t lastQuote = line.find_last_of('"');
+
+				if (firstQuote == std::string::npos || lastQuote == std::string::npos || lastQuote <= firstQuote) {
+					throw std::runtime_error(".ascii requires quoted text");
+				}
+
+				std::string text = line.substr(firstQuote + 1, lastQuote - firstQuote - 1);
+
+				for (char c : text) {
+					outputRom.push_back({ false, 0, static_cast<uint8_t>(c) });
+				}
+
+				continue;
+
+			}else if (ins.mnemonic == ".word") { // Handle .word directive to emit a 16-bit value into ROM as two bytes (big-endian).
+				if (ins.operands.size() != 1) {
+					throw std::runtime_error(".word requires exactly one value");
+				}
+
+				int value = std::stoi(ins.operands[0]);
+
+				if (value < 0 || value > 65535) {
+					throw std::runtime_error(".word value must be between 0 and 65535");
+				}
+
+				outputRom.push_back({ false, 0, static_cast<uint8_t>((value >> 8) & 0xFF) });
+				outputRom.push_back({ false, 0, static_cast<uint8_t>(value & 0xFF) });
+				continue;
 			}
+
+
 
 			uint64_t encoded = encodeInstruction(ins);
 			// Keep instruction-only output for verbose dumps and --outbin.
@@ -878,6 +950,16 @@ void execute(uint64_t instr) {
 
 	case 0x0026: // stbi: memory[imm] = rX (byte)
 		memory[sp] = registers[rx] & 0xFF;
+		break;
+
+	case 0x0027: // ldbr: rX = instructionRom[rY] (byte)
+		// Read one byte from instruction ROM using an address stored in a register.
+		registers[rx] = instructionRom[registers[ry]];
+		break;
+
+	case 0x0028: // ldbri: rX = instructionRom[imm] (byte)
+		// Read one byte from instruction ROM using the immediate/special field as the address.
+		registers[rx] = instructionRom[sp];
 		break;
 
 	default:

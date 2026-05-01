@@ -86,6 +86,15 @@ label:
 | --- | --- | --- | --- | --- | --- |
 | xxxxxxxxxxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxx | xxxxxxxxxxxxxxxx |
 
+#### Data directives
+
+| Directive | Usage | Description |
+| --- | --- | --- |
+| .byte | value | Emit one byte into instruction ROM |
+| .ascii | "text" | Emit text bytes into instruction ROM |
+| .asciiz | "text" | Emit text bytes followed by a zero byte |
+| .word | value | Emit one 16-bit word into instruction ROM |
+
 #### Instruction Reference
 
 ##### Data movement
@@ -143,6 +152,8 @@ label:
 | stb | rX, rY | Store byte to memory (memory[rX] = rY & 0xFF) | 0000000000100100 |
 | ldbi | rX, imm | Load byte from immediate memory address (rX = memory[imm]) | 0000000000100101 |
 | stbi | rX, imm | Store byte to immediate memory address (memory[imm] = rX & 0xFF) | 0000000000100110 |
+| ldbr | rX, rY | Load byte from instruction ROM (rX = instructionRom[rY]) | 0000000000100111 |
+| ldbri | rX, imm | Load byte from immediate instruction ROM address (rX = instructionRom[imm]) | 0000000000101000 |
 
 ##### I/O
 
@@ -150,7 +161,7 @@ label:
 | --- | --- | --- | --- |
 | out | rX | Push contents of the register to stdout as an ASCII character | 0000000000001101 |
 | outn | rX | Push contents of the register to stdout as a decimal number | 0000000000100001 |
-| outs | rX | Print a zero-terminated string starting at memory address rX | 0000000000100010 |
+| outs | rX | Print a zero-terminated string starting at instruction ROM address rX | 0000000000100010 |
 
 ##### Control
 
