@@ -15,6 +15,8 @@ This is a project that may actually be actively be worked on by me for longer th
 - Instruction ROM: 64 KiB address space, with 8 bytes per instruction
 - Instruction set:
 
+Assembled instructions are loaded into instruction ROM as bytes. During emulation, the CPU fetches 8 bytes from instruction ROM at `PC`, decodes them as one 64-bit instruction, then advances `PC` by 8 unless the instruction jumps or halts.
+
 ## ASM Instructions
 
 ### Registers

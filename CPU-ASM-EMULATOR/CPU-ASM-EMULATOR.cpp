@@ -14,6 +14,7 @@
 const int8_t REGISTER_COUNT = 32; // Number of registers in the CPU emulator
 const int REGISTER_SIZE = 16; // Size of each register in bits
 const int INSTRUCTION_SIZE_BYTES = 8; // Each encoded instruction is 64 bits.
+const int ADDRESS_SPACE_SIZE = 65536; // 16-bit addresses can point at 64 KiB.
 
 
 // Global variables to track modes and file paths
@@ -548,12 +549,48 @@ bool assemble() {
 
 // CPU emulator variables
 
-std::vector<uint64_t> instructionRom; // Decoded view of instruction ROM, one 64-bit instruction per entry.
+uint8_t instructionRom[ADDRESS_SPACE_SIZE]; // Instruction ROM, stored as real bytes.
+size_t instructionRomSize = 0; // Number of instruction ROM bytes loaded from the assembler output.
 uint16_t PC = 0; // Program Counter, as a byte address into instruction ROM.
 std::array<uint16_t, REGISTER_COUNT> registers; // Array to represent the registers in the CPU emulator (16-bit registers)
-uint8_t memory[65536]; // 64KB of memory for the CPU emulator (addressable by 16-bit addresses)
+uint8_t memory[ADDRESS_SPACE_SIZE]; // 64KB of RAM for the CPU emulator (addressable by 16-bit addresses)
 uint16_t SP = 0; // Stack Pointer
 bool CPU_halted = false; // Tracks whether execution has stopped.
+
+bool loadInstructionRom() {
+	instructionRomSize = 0;
+	std::fill(std::begin(instructionRom), std::end(instructionRom), 0);
+
+	for (uint64_t instr : outputBinary) {
+		if (instructionRomSize + INSTRUCTION_SIZE_BYTES > ADDRESS_SPACE_SIZE) {
+			std::cout << "Error: Instruction ROM is full.\n";
+			return false;
+		}
+
+		// Store the 64-bit instruction in big-endian byte order.
+		// This keeps ROM byte 0 equal to the first printed bit/byte of the opcode.
+		for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
+			int shift = (INSTRUCTION_SIZE_BYTES - 1 - byte) * 8;
+			instructionRom[instructionRomSize + byte] = static_cast<uint8_t>((instr >> shift) & 0xFF);
+		}
+
+		instructionRomSize += INSTRUCTION_SIZE_BYTES;
+	}
+
+	return true;
+}
+
+uint64_t fetchInstruction(uint16_t addr) {
+	uint64_t instr = 0;
+
+	// Fetch one 64-bit instruction from instruction ROM, one byte at a time.
+	// The address wraps naturally through the 16-bit address space.
+	for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
+		instr = (instr << 8) | instructionRom[(addr + byte) & 0xFFFF];
+	}
+
+	return instr;
+}
 
 // Function to read a 16-bit word from memory at the specified address (big-endian)
 uint16_t readWord(uint16_t addr) {
@@ -944,8 +981,10 @@ int main(int argc, char* argv[])
 			std::cout << "Emulation mode enabled. Starting emulation of the assembled binary...\n";
 		}
 
+		if (!loadInstructionRom()) {
+			return 1;
+		}
 
-		instructionRom = outputBinary;
 		PC = 0;
 		CPU_halted = false;
 		registers.fill(0); // Initialize all registers to zero before emulation
@@ -960,8 +999,8 @@ int main(int argc, char* argv[])
 			}
 		}
 
-		while (!CPU_halted && (PC / INSTRUCTION_SIZE_BYTES) < instructionRom.size()) {
-			execute(instructionRom[PC / INSTRUCTION_SIZE_BYTES]);
+		while (!CPU_halted && static_cast<size_t>(PC) + INSTRUCTION_SIZE_BYTES <= instructionRomSize) {
+			execute(fetchInstruction(PC));
 		}
 
 		if (ARG_verboseMode) {
