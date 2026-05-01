@@ -100,6 +100,8 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"jle",  {0x001a, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 	{"jgt",  {0x001b, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
 	{"jge",  {0x001c, {OperandKind::Register, OperandKind::Register, OperandKind::Label}, EncodingKind::JL}},
+	{"push", {0x001d, {OperandKind::Register}, EncodingKind::R}},
+	{"pop",  {0x001e, {OperandKind::Register}, EncodingKind::R}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -732,6 +734,16 @@ void execute(uint64_t instr) {
 			PC = sp;
 			return;
 		}
+		break;
+
+	case 0x001d: // push
+		SP -= 2;
+		writeWord(SP, registers[rx]);
+		break;
+
+	case 0x001e: // pop
+		registers[rx] = readWord(SP);
+		SP += 2;
 		break;
 
 	default:

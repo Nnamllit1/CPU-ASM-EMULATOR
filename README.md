@@ -53,7 +53,7 @@ This is a project that may actually be actively be worked on by me for longer th
 | r31 | General purpose register |
 
 The CPU also has a separate 16-bit stack pointer named `SP`. It is initialized to `0xFFFE` when emulation starts.
-
+The stack grows downward. `push` stores at `SP`, then subtracts 2. `pop` adds 2, then loads from `SP`.
 
 ### Instructions
 
@@ -146,6 +146,13 @@ label:
 | Instruction | Usage | Description | Opcode |
 | --- | --- | --- | --- |
 | hlt | | Halt the CPU | 0000000000001100 |
+
+##### Stack
+
+| Instruction | Usage | Description | Opcode |
+| --- | --- | --- | --- |
+| push | rX | Push register to stack | 0000000000011101 |
+| pop | rX | Pop register from stack | 0000000000011110 |
 
 More instructions will be added later.
 
