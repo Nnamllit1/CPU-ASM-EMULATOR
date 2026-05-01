@@ -291,6 +291,19 @@ bool processInstruction() {
 bool assemble() {
 	if (asmFileContent == "") return false; // Return false if the assembly file content is empty
 
+	// Remove ';' comments and trim whitespace from the assembly file content before processing
+	std::istringstream iss(asmFileContent);
+	std::string line;
+	std::string cleanedContent;
+	while (std::getline(iss, line)) {
+		size_t commentPos = line.find(';');
+		if (commentPos != std::string::npos) {
+			line = line.substr(0, commentPos);
+		}
+		cleanedContent += trim(line) + "\n";
+	}
+	asmFileContent = cleanedContent;
+
 	// First pass: Process labels and store their corresponding line numbers (Program counter position) in the labels map
 	asmFileContent = trim(asmFileContent); // Trim whitespace from the assembly file content
 	if (asmFileContent == "") {

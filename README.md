@@ -95,3 +95,26 @@ label:
 | out | rx | push contents of the register to stdout (as ascii character from decimal value, a = 97 and z = 122) | 0000000000010000 |
 
 More instructions will be added later.
+
+## Assembler
+
+The assembler is a simple text-based assembler.
+
+### Syntax
+
+- Comments start with a semicolon `;`
+- Labels are case sensitive
+- Labels are followed by a colon `:`
+- Labels are followed by the instruction to be executed
+
+### Example
+
+``` asm
+; This is a comment
+
+start:
+    mov r0, r1
+    add r0, r2
+    sub r0, r3
+    jmp start
+```
