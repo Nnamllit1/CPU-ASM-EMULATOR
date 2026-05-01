@@ -52,6 +52,9 @@ This is a project that may actually be actively be worked on by me for longer th
 | r30 | General purpose register |
 | r31 | General purpose register |
 
+The CPU also has a separate 16-bit stack pointer named `SP`. It is initialized to `0xFFFE` when emulation starts.
+
+
 ### Instructions
 
 Instruction names are not case sensitive.

@@ -537,6 +537,7 @@ std::vector<uint64_t> program; // Array to store the assembly program instructio
 int PC = 0; // Program Counter
 std::array<uint16_t, REGISTER_COUNT> registers; // Array to represent the registers in the CPU emulator (16-bit registers)
 uint8_t memory[65536]; // 64KB of memory for the CPU emulator (addressable by 16-bit addresses)
+uint16_t SP = 0; // Stack Pointer
 
 // Function to read a 16-bit word from memory at the specified address (big-endian)
 uint16_t readWord(uint16_t addr) {
@@ -879,8 +880,10 @@ int main(int argc, char* argv[])
 		PC = 0;
 		registers.fill(0); // Initialize all registers to zero before emulation
 		std::fill(std::begin(memory), std::end(memory), 0); // Initialize all memory to zero before emulation
-
+		SP = 0xFFFE; // Initialize stack pointer to the end of memory (growing downwards)
+		
 		if (ARG_verboseMode) {
+			std::cout << "SP: " << std::bitset<16>(SP) << ": " << SP << "\n";
 			std::cout << "Initial register state before emulation:\n";
 			for (int i = 0; i < REGISTER_COUNT; ++i) {
 				std::cout << "R" << i << ": " << std::bitset<16>(registers[i]) << ": " << registers[i] << "\n";
