@@ -146,7 +146,7 @@ int main(int argc, char* argv[])
 			return 1;
 		}
 
-		PC = 0;
+		PC = entryPoint; // Initialize the program counter to the entry point defined by the assembler (the ROM byte address where emulation starts)
 		CPU_halted = false;
 		registers.fill(0); // Initialize all registers to zero before emulation
 		std::fill(std::begin(memory), std::end(memory), 0); // Initialize all memory to zero before emulation

@@ -15,6 +15,7 @@ extern std::map <std::string, int16_t> registerNames; // Map to store register n
 extern std::string asmFileContent; // Variable to store the content of the assembly file as a string
 extern std::vector<RomChunk> outputRom;
 extern uint16_t outputRomAddress; // Tracks the ROM byte address while emitting chunks in the second pass.
+extern uint16_t entryPoint; // ROM byte address where emulation starts.
 
 void initializeRegisterNames();
 bool loadDefaultIncludes();

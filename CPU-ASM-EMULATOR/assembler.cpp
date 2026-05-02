@@ -1,5 +1,6 @@
 #include "assembler.h"
 #include "defaultincludes.h"
+
 // Assembly variables
 
 std::map <std::string, uint16_t> labels = {}; // Map to store labels and their corresponding ROM byte addresses.
@@ -9,6 +10,7 @@ std::string asmFileContent = ""; // Variable to store the content of the assembl
 
 std::vector<RomChunk> outputRom;
 uint16_t outputRomAddress = 0; // Tracks the ROM byte address while emitting chunks in the second pass.
+uint16_t entryPoint = 0; // ROM byte address where emulation starts.
 
 // Stores one macro definition after parsing `%macro name param...`.
 // Body lines are kept as source text, then expanded before labels/instructions are processed.
@@ -355,6 +357,9 @@ bool processLabels() {
 				}
 			}
 
+		} else if (line.rfind(".entry", 0) == 0) {
+			// no ROM bytes
+
 		} else {
 			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
 		}
@@ -502,6 +507,20 @@ bool processInstruction() {
 				}
 
 				continue;
+			
+			} else if (ins.mnemonic == ".entry") { // Handle .entry directive to set the entry point of the program (the ROM address where emulation starts).
+				if (ins.operands.size() != 1) {
+					throw std::runtime_error(".entry requires exactly one label");
+				}
+
+				auto it = labels.find(ins.operands[0]);
+				if (it == labels.end()) {
+					throw std::runtime_error("Unknown entry label: " + ins.operands[0]);
+				}
+
+				entryPoint = it->second;
+				continue;
+
 			}
 
 			uint64_t encoded = encodeInstruction(ins);
@@ -666,6 +685,7 @@ bool assemble() {
 	outputBinary.clear();
 	outputRom.clear();
 	outputRomAddress = 0;
+	entryPoint = 0;
 
 	if (processLabels()) {
 		if (ARG_verboseMode) {
