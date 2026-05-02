@@ -113,6 +113,44 @@ jobs:
             if (($run -join "`n") -notmatch "Hi") {
               throw "Emulator output did not contain the expected text."
             }
+
+            $echoAsmPath = Join-Path $tempDir "echo.asm"
+            @(
+              "start:",
+              "    movi r0, 0",
+              "wait_input:",
+              "    in r0",
+              "    jz r0, wait_input",
+              "    out r0",
+              "    hlt"
+            ) | Set-Content -Path $echoAsmPath -Encoding ascii
+
+            $echoRun = "Z" | & $exe --asm $echoAsmPath --emulate
+            if ($LASTEXITCODE -ne 0) {
+              throw "Input emulator returned exit code $LASTEXITCODE."
+            }
+
+            if (($echoRun -join "`n") -notmatch "Z") {
+              throw "Input instruction did not echo the expected character."
+            }
+
+            $noInputAsmPath = Join-Path $tempDir "no-input.asm"
+            @(
+              "start:",
+              "    movi r0, 'A'",
+              "    in r0",
+              "    out r0",
+              "    hlt"
+            ) | Set-Content -Path $noInputAsmPath -Encoding ascii
+
+            $noInputRun = & $exe --asm $noInputAsmPath --emulate
+            if ($LASTEXITCODE -ne 0) {
+              throw "No-input emulator returned exit code $LASTEXITCODE."
+            }
+
+            if (($noInputRun -join "`n") -notmatch "A") {
+              throw "Input instruction changed the register even though no input was available."
+            }
           }
           finally {
             Remove-Item -LiteralPath $tempDir -Recurse -Force

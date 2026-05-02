@@ -1,6 +1,14 @@
 #include "cpu.h"
 #include "assembler.h"
 
+#include <cstdio>
+
+#ifdef _WIN32
+#include <conio.h>
+#include <io.h>
+#include <windows.h>
+#endif
+
 // CPU emulator variables
 
 uint8_t instructionRom[ADDRESS_SPACE_SIZE]; // Instruction ROM, stored as real bytes.
@@ -69,6 +77,63 @@ uint64_t fetchInstruction(uint16_t addr) {
 uint16_t readInstructionRomWord(uint16_t addr) {
 	return (static_cast<uint16_t>(instructionRom[addr]) << 8) |
 		static_cast<uint16_t>(instructionRom[(addr + 1) & 0xFFFF]);
+}
+
+bool pollInputByte(uint8_t& value) {
+#ifdef _WIN32
+	// Interactive console input should behave like hardware key polling:
+	// return immediately, consume one key only when available, and do not echo it.
+	if (_isatty(_fileno(stdin))) {
+		if (!_kbhit()) {
+			return false;
+		}
+
+		int ch = _getch();
+		if (ch == 0 || ch == 224) {
+			ch = _getch();
+		}
+
+		value = static_cast<uint8_t>(ch);
+		return true;
+	}
+
+	// Redirected input is used by scripts and CI. Peek first so `in` stays
+	// non-blocking instead of waiting forever when no byte has arrived yet.
+	HANDLE inputHandle = GetStdHandle(STD_INPUT_HANDLE);
+	if (inputHandle == INVALID_HANDLE_VALUE || inputHandle == nullptr) {
+		return false;
+	}
+
+	if (GetFileType(inputHandle) == FILE_TYPE_PIPE) {
+		DWORD available = 0;
+		if (!PeekNamedPipe(inputHandle, nullptr, 0, nullptr, &available, nullptr) || available == 0) {
+			return false;
+		}
+
+		char ch = 0;
+		DWORD bytesRead = 0;
+		if (!ReadFile(inputHandle, &ch, 1, &bytesRead, nullptr) || bytesRead != 1) {
+			return false;
+		}
+
+		value = static_cast<uint8_t>(ch);
+		return true;
+	}
+#endif
+
+	// Portable fallback for non-Windows builds. This keeps the same "poll,
+	// then read only if available" behavior when the stream reports availability.
+	if (std::cin.rdbuf()->in_avail() <= 0) {
+		return false;
+	}
+
+	int ch = std::cin.get();
+	if (ch == EOF) {
+		return false;
+	}
+
+	value = static_cast<uint8_t>(ch);
+	return true;
 }
 
 // Function to read a 16-bit word from memory at the specified address (big-endian)
@@ -338,6 +403,28 @@ void execute(uint64_t instr) {
 		registers[rx] = (static_cast<uint16_t>(instructionRom[sp]) << 8) |
 			instructionRom[(sp + 1) & 0xFFFF];
 		break;
+
+	case 0x002b: // in
+	{
+		uint8_t input = 0;
+		bool hasInput = pollInputByte(input);
+		// No input means the register is intentionally left unchanged.
+		// Programs can poll in a loop and decide their own break condition.
+		if (hasInput) {
+			registers[rx] = input;
+		}
+
+		if (ARG_verboseMode) {
+			std::cout << "Input instruction: R" << static_cast<int>(rx);
+			if (hasInput) {
+				std::cout << " = " << std::bitset<16>(registers[rx]) << "\n";
+			}
+			else {
+				std::cout << " unchanged; no input available\n";
+			}
+		}
+		break;
+	}
 
 	default:
 		std::cout << "Unknown opcode: " << op << "\n";

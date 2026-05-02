@@ -96,6 +96,7 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"ldbri",{0x0028, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 	{"ldwr", {0x0029, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"ldwri",{0x002a, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
+	{"in",   {0x002b, {OperandKind::Register}, EncodingKind::R}},
 };
 
 // Function to initialize register names and their corresponding register numbers

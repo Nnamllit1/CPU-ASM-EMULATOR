@@ -177,9 +177,21 @@ movi r3, 'A'       ; ASCII character value
 
 | Instruction | Usage | Description | Opcode |
 | --- | --- | --- | --- |
+| in | rX | Poll one input character into rX; no input leaves rX unchanged and console keys are not echoed | 0000000000101011 |
 | out | rX | Push contents of the register to stdout as an ASCII character | 0000000000001101 |
 | outn | rX | Push contents of the register to stdout as a decimal number | 0000000000100001 |
 | outs | rX | Print a zero-terminated string starting at instruction ROM address rX | 0000000000100010 |
+
+`in` is non-blocking. If no key/input byte is available, the target register keeps its old value.
+Console keypresses are not echoed; print them yourself with `out` if you want them to appear.
+
+``` asm
+    movi r0, 0
+wait_input:
+    in r0
+    jz r0, wait_input
+    out r0
+```
 
 ##### Control
 
