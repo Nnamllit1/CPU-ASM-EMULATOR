@@ -125,17 +125,40 @@ jobs:
           New-Item -ItemType Directory -Path dist | Out-Null
           Copy-Item -LiteralPath "${{ env.EXE_PATH }}" -Destination "dist\CPU-ASM-EMULATOR.exe"
           Compress-Archive -Path "dist\CPU-ASM-EMULATOR.exe" -DestinationPath "dist\CPU-ASM-EMULATOR-windows-x64.zip" -Force
-          Get-ChildItem "dist\CPU-ASM-EMULATOR.exe", "dist\CPU-ASM-EMULATOR-windows-x64.zip" |
+
+          choco install upx -y --no-progress
+          Copy-Item -LiteralPath "${{ env.EXE_PATH }}" -Destination "dist\CPU-ASM-EMULATOR-upx.exe"
+          upx --best --lzma "dist\CPU-ASM-EMULATOR-upx.exe"
+
+          $packedVersion = & "dist\CPU-ASM-EMULATOR-upx.exe" --version
+          if ($LASTEXITCODE -ne 0 -or ($packedVersion -join "`n") -notmatch "CPU-ASM-EMULATOR version") {
+            throw "Packed executable failed the post-pack CLI check."
+          }
+
+          Remove-Item -LiteralPath "dist\CPU-ASM-EMULATOR.exe"
+          Rename-Item -LiteralPath "dist\CPU-ASM-EMULATOR-upx.exe" -NewName "CPU-ASM-EMULATOR.exe"
+          Compress-Archive -Path "dist\CPU-ASM-EMULATOR.exe" -DestinationPath "dist\CPU-ASM-EMULATOR-windows-x64-upx.zip" -Force
+          Remove-Item -LiteralPath "dist\CPU-ASM-EMULATOR.exe"
+
+          Get-ChildItem "dist\CPU-ASM-EMULATOR-windows-x64.zip", "dist\CPU-ASM-EMULATOR-windows-x64-upx.zip" |
             Select-Object Name, Length
 
-      - name: Upload artifact
+      - name: Upload standard artifact
         uses: actions/upload-artifact@v4
         with:
           name: CPU-ASM-EMULATOR-windows-x64
           path: dist/CPU-ASM-EMULATOR-windows-x64.zip
 
+      - name: Upload UPX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CPU-ASM-EMULATOR-windows-x64-upx
+          path: dist/CPU-ASM-EMULATOR-windows-x64-upx.zip
+
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/CPU-ASM-EMULATOR-windows-x64.zip
+          files: |
+            dist/CPU-ASM-EMULATOR-windows-x64.zip
+            dist/CPU-ASM-EMULATOR-windows-x64-upx.zip
