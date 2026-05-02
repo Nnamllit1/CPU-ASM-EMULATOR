@@ -94,6 +94,7 @@ label:
 | .ascii | "text" | Emit text bytes into instruction ROM |
 | .asciiz | "text" | Emit text bytes followed by a zero byte |
 | .word | value | Emit one 16-bit word into instruction ROM |
+| .space | count | Emit count zero bytes into instruction ROM |
 
 #### Instruction Reference
 
@@ -154,6 +155,8 @@ label:
 | stbi | rX, imm | Store byte to immediate memory address (memory[imm] = rX & 0xFF) | 0000000000100110 |
 | ldbr | rX, rY | Load byte from instruction ROM (rX = instructionRom[rY]) | 0000000000100111 |
 | ldbri | rX, imm | Load byte from immediate instruction ROM address (rX = instructionRom[imm]) | 0000000000101000 |
+| ldwr | rX, rY | Load word from instruction ROM (rX = instructionRom[rY]) | 0000000000101001 |
+| ldwri | rX, imm | Load word from immediate instruction ROM address (rX = instructionRom[imm]) | 0000000000101010 |
 
 ##### I/O
 

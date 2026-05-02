@@ -7,6 +7,7 @@
 #include <bitset>
 #include <array>
 #include <algorithm>
+#include <iomanip>
 
 #include "defaultincludes.h"
 
@@ -123,6 +124,8 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"stbi", {0x0026, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 	{"ldbr", {0x0027, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"ldbri",{0x0028, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
+	{"ldwr", {0x0029, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
+	{"ldwri",{0x002a, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -350,6 +353,17 @@ bool processLabels() {
 			// .word emits one 16-bit value into ROM as two bytes.
 			romAddress = static_cast<uint16_t>(romAddress + 2);
 
+		} else if (line.rfind(".space", 0) == 0) {
+			// .space N reserves N bytes in ROM, so we need to parse the operand to know how much to increment the ROM address.
+			ParsedInstruction ins = parseLine(line);
+
+			if (ins.operands.size() == 1) {
+				int count = std::stoi(ins.operands[0]);
+				if (count >= 0) {
+					romAddress = static_cast<uint16_t>(romAddress + count);
+				}
+			}
+
 		} else {
 			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
 		}
@@ -420,7 +434,7 @@ bool processInstruction() {
 
 				continue;
 
-			}else if (ins.mnemonic == ".word") { // Handle .word directive to emit a 16-bit value into ROM as two bytes (big-endian).
+			} else if (ins.mnemonic == ".word") { // Handle .word directive to emit a 16-bit value into ROM as two bytes (big-endian).
 				if (ins.operands.size() != 1) {
 					throw std::runtime_error(".word requires exactly one value");
 				}
@@ -434,8 +448,24 @@ bool processInstruction() {
 				outputRom.push_back({ false, 0, static_cast<uint8_t>((value >> 8) & 0xFF) });
 				outputRom.push_back({ false, 0, static_cast<uint8_t>(value & 0xFF) });
 				continue;
-			}
 
+			} else if (ins.mnemonic == ".space") { // Handle .space directive to reserve a specified number of bytes in ROM (emit zero bytes).
+				if (ins.operands.size() != 1) {
+					throw std::runtime_error(".space requires exactly one count");
+				}
+
+				int count = std::stoi(ins.operands[0]);
+
+				if (count < 0 || count > 65535) {
+					throw std::runtime_error(".space count must be between 0 and 65535");
+				}
+
+				for (int i = 0; i < count; ++i) {
+					outputRom.push_back({ false, 0, 0 });
+				}
+
+				continue;
+			}
 
 
 			uint64_t encoded = encodeInstruction(ins);
@@ -634,8 +664,24 @@ bool assemble() {
 		}
 		if (ARG_outbin) // If the user has requested to output the assembled binary, print the binary instructions without verbose mode details.
 		{
-			for (size_t i = 0; i < outputBinary.size(); ++i) {
-				std::cout << std::bitset<64>(outputBinary[i]) << "\n";
+			uint16_t address = 0;
+			for (const RomChunk& chunk : outputRom) {
+				if (chunk.isInstruction) {
+					for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
+						int shift = (INSTRUCTION_SIZE_BYTES - 1 - byte) * 8;
+						uint8_t value = static_cast<uint8_t>((chunk.instruction >> shift) & 0xFF);
+						std::cout
+							<< std::hex << std::uppercase
+							<< std::setw(4) << std::setfill('0') << address
+							<< ": "
+							<< std::bitset<8>(value)
+							<< std::dec << "\n";
+						address++;
+					}
+				}
+				else {
+					std::cout << std::bitset<8>(chunk.byte) << "\n";
+				}
 			}
 		}
 	}
@@ -960,6 +1006,16 @@ void execute(uint64_t instr) {
 	case 0x0028: // ldbri: rX = instructionRom[imm] (byte)
 		// Read one byte from instruction ROM using the immediate/special field as the address.
 		registers[rx] = instructionRom[sp];
+		break;
+
+	case 0x0029: // ldwr
+		registers[rx] = (static_cast<uint16_t>(instructionRom[registers[ry]]) << 8) |
+			instructionRom[(registers[ry] + 1) & 0xFFFF];
+		break;
+
+	case 0x002a: // ldwri
+		registers[rx] = (static_cast<uint16_t>(instructionRom[sp]) << 8) |
+			instructionRom[(sp + 1) & 0xFFFF];
 		break;
 
 	default:
