@@ -80,6 +80,17 @@ label:
     jmp label
 ```
 
+#### Number literals
+
+Numbers can be written as decimal, hexadecimal, binary, or single character values.
+
+``` asm
+movi r0, 123       ; decimal
+movi r1, 0x007B    ; hexadecimal
+movi r2, 0b1111011 ; binary
+movi r3, 'A'       ; ASCII character value
+```
+
 #### Instruction format
 
 | Opcode | Rx | Ry | Rz | Mode | Special / Immediate / Label |

@@ -126,11 +126,73 @@ int16_t getRegisterNumber(const std::string& regName) {
 	}
 }
 
+// Parse assembler number literals in the few formats that are nice to write by hand.
+// Supported forms: 123, 0x7B, 0b1111011, and character literals like 'A' or '\n'.
+int parseNumberLiteral(const std::string& token) {
+	if (token.empty()) {
+		throw std::runtime_error("Empty number literal");
+	}
+
+	if (token.front() == '\'') {
+		if (token.size() == 3 && token.back() == '\'') {
+			return static_cast<unsigned char>(token[1]);
+		}
+
+		if (token.size() == 4 && token[1] == '\\' && token.back() == '\'') {
+			switch (token[2]) {
+			case '0': return 0;
+			case 'n': return '\n';
+			case 'r': return '\r';
+			case 't': return '\t';
+			case '\\': return '\\';
+			case '\'': return '\'';
+			default:
+				throw std::runtime_error("Unknown character escape: " + token);
+			}
+		}
+
+		throw std::runtime_error("Invalid character literal: " + token);
+	}
+
+	int sign = 1;
+	size_t start = 0;
+	if (token[start] == '+' || token[start] == '-') {
+		sign = token[start] == '-' ? -1 : 1;
+		start++;
+	}
+
+	int base = 10;
+	if (token.size() >= start + 2 && token[start] == '0' && (token[start + 1] == 'x' || token[start + 1] == 'X')) {
+		base = 16;
+		start += 2;
+	}
+	else if (token.size() >= start + 2 && token[start] == '0' && (token[start + 1] == 'b' || token[start + 1] == 'B')) {
+		base = 2;
+		start += 2;
+	}
+
+	if (start >= token.size()) {
+		throw std::runtime_error("Invalid number literal: " + token);
+	}
+
+	std::string digits = token.substr(start);
+	size_t parsedChars = 0;
+	unsigned long value = std::stoul(digits, &parsedChars, base);
+	if (parsedChars != digits.size()) {
+		throw std::runtime_error("Invalid number literal: " + token);
+	}
+	if (value > 65535) {
+		throw std::runtime_error("Number literal is too large for 16 bits: " + token);
+	}
+
+	return static_cast<int>(value) * sign;
+}
+
 // Function to get the binary opcode for a given instruction mnemonic
 uint16_t encodeOperand(const std::string& token, OperandKind kind) {
 	// Encode a single operand depending on its declared kind:
 	// - Register: resolve register name to index (0..REGISTER_COUNT-1)
-	// - Immediate: convert decimal numeric string to uint16_t via std::stoi
+	// - Immediate: resolve label or parse a number literal into the 16-bit immediate field
 	// - Label: lookup label -> ROM byte address (from first pass)
 	// - None: zero
 	switch (kind) {
@@ -147,8 +209,7 @@ uint16_t encodeOperand(const std::string& token, OperandKind kind) {
 			return static_cast<uint16_t>(it->second);
 		}
 
-		// Note: std::stoi throws if token is not a valid integer; caller will receive exception.
-		int value = std::stoi(token);
+		int value = parseNumberLiteral(token);
 		return static_cast<uint16_t>(value);
 	}
 	case OperandKind::Label: {
@@ -328,7 +389,7 @@ bool processLabels() {
 			ParsedInstruction ins = parseLine(line);
 
 			if (ins.operands.size() == 1) {
-				int count = std::stoi(ins.operands[0]);
+				int count = parseNumberLiteral(ins.operands[0]);
 				if (count >= 0) {
 					romAddress = static_cast<uint16_t>(romAddress + count);
 				}
@@ -339,7 +400,7 @@ bool processLabels() {
 			ParsedInstruction ins = parseLine(line);
 
 			if (ins.operands.size() == 1) {
-				int alignment = std::stoi(ins.operands[0]);
+				int alignment = parseNumberLiteral(ins.operands[0]);
 				if (alignment > 0) {
 					while (romAddress % alignment != 0) {
 						romAddress = static_cast<uint16_t>(romAddress + 1);
@@ -352,7 +413,7 @@ bool processLabels() {
 			ParsedInstruction ins = parseLine(line);
 
 			if (ins.operands.size() == 1) {
-				int target = std::stoi(ins.operands[0]);
+				int target = parseNumberLiteral(ins.operands[0]);
 
 				if (target >= romAddress) {
 					romAddress = static_cast<uint16_t>(target);
@@ -394,7 +455,7 @@ bool processInstruction() {
 					throw std::runtime_error(".byte requires exactly one value");
 				}
 
-				int value = std::stoi(ins.operands[0]);
+				int value = parseNumberLiteral(ins.operands[0]);
 				if (value < 0 || value > 255) {
 					throw std::runtime_error(".byte value must be between 0 and 255");
 				}
@@ -444,7 +505,7 @@ bool processInstruction() {
 					throw std::runtime_error(".word requires exactly one value");
 				}
 
-				int value = std::stoi(ins.operands[0]);
+				int value = parseNumberLiteral(ins.operands[0]);
 
 				if (value < 0 || value > 65535) {
 					throw std::runtime_error(".word value must be between 0 and 65535");
@@ -460,7 +521,7 @@ bool processInstruction() {
 					throw std::runtime_error(".space requires exactly one count");
 				}
 
-				int count = std::stoi(ins.operands[0]);
+				int count = parseNumberLiteral(ins.operands[0]);
 
 				if (count < 0 || count > 65535) {
 					throw std::runtime_error(".space count must be between 0 and 65535");
@@ -478,7 +539,7 @@ bool processInstruction() {
 					throw std::runtime_error(".align requires exactly one alignment");
 				}
 
-				int alignment = std::stoi(ins.operands[0]);
+				int alignment = parseNumberLiteral(ins.operands[0]);
 
 				if (alignment <= 0 || alignment > 65535) {
 					throw std::runtime_error(".align value must be between 1 and 65535");
@@ -496,7 +557,7 @@ bool processInstruction() {
 					throw std::runtime_error(".org requires exactly one address");
 				}
 
-				int target = std::stoi(ins.operands[0]);
+				int target = parseNumberLiteral(ins.operands[0]);
 
 				if (target < 0 || target > 65535) {
 					throw std::runtime_error(".org address must be between 0 and 65535");
