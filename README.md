@@ -210,6 +210,13 @@ wait_input:
 
 More instructions will be added later.
 
+## Examples
+
+- `examples/hello world.asm` prints a simple message using built-in macros.
+- `examples/interactive key inspector.asm` polls keyboard/input bytes with `in`, prints each received key/code, and exits on `q`.
+- `examples/rom byte decoder.asm` reads encoded bytes from instruction ROM and decodes them.
+- `examples/full system showcase.asm` exercises most implemented CPU features.
+
 ### Macros
 
 Macros are used to simplify the assembly code.
