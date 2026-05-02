@@ -1,5 +1,6 @@
 <Solution>
   <Configurations>
+    <BuildType Name="ReleaseSize" />
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>

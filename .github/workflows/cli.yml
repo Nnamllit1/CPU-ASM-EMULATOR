@@ -22,9 +22,9 @@ jobs:
     runs-on: windows-latest
 
     env:
-      CONFIGURATION: Release
+      CONFIGURATION: ReleaseSize
       PLATFORM: x64
-      EXE_PATH: x64\Release\CPU-ASM-EMULATOR.exe
+      EXE_PATH: x64\ReleaseSize\CPU-ASM-EMULATOR.exe
 
     steps:
       - name: Checkout
@@ -125,6 +125,8 @@ jobs:
           New-Item -ItemType Directory -Path dist | Out-Null
           Copy-Item -LiteralPath "${{ env.EXE_PATH }}" -Destination "dist\CPU-ASM-EMULATOR.exe"
           Compress-Archive -Path "dist\CPU-ASM-EMULATOR.exe" -DestinationPath "dist\CPU-ASM-EMULATOR-windows-x64.zip" -Force
+          Get-ChildItem "dist\CPU-ASM-EMULATOR.exe", "dist\CPU-ASM-EMULATOR-windows-x64.zip" |
+            Select-Object Name, Length
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
