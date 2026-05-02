@@ -97,6 +97,7 @@ const std::map<std::string, InstructionDef> instructionSet = { // Map to define 
 	{"ldwr", {0x0029, {OperandKind::Register, OperandKind::Register}, EncodingKind::RR}},
 	{"ldwri",{0x002a, {OperandKind::Register, OperandKind::Immediate}, EncodingKind::RI}},
 	{"in",   {0x002b, {OperandKind::Register}, EncodingKind::R}},
+	{"inkey",{0x002c, {OperandKind::Register}, EncodingKind::R}},
 };
 
 // Function to initialize register names and their corresponding register numbers
@@ -730,6 +731,63 @@ bool processMacros() {
 	return true;
 }
 
+uint8_t applyResetVectorByte(uint16_t byteAddress, uint8_t value) {
+	// The final ROM image includes reset-vector patching, so text dumps,
+	// binary output, and emulation all agree on bytes 0 and 1.
+	if (resetVectorEnabled && byteAddress == 0) {
+		return static_cast<uint8_t>((resetVectorAddress >> 8) & 0xFF);
+	}
+	if (resetVectorEnabled && byteAddress == 1) {
+		return static_cast<uint8_t>(resetVectorAddress & 0xFF);
+	}
+	return value;
+}
+
+std::vector<uint8_t> buildRomImage() {
+	std::vector<uint8_t> rom;
+	uint16_t address = 0;
+
+	// Flatten the mixed instruction/data stream into the exact ROM bytes that
+	// the emulator or `--bin` should see after all assembler-side patching.
+	for (const RomChunk& chunk : outputRom) {
+		if (chunk.isInstruction) {
+			for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
+				int shift = (INSTRUCTION_SIZE_BYTES - 1 - byte) * 8;
+				uint8_t value = static_cast<uint8_t>((chunk.instruction >> shift) & 0xFF);
+				rom.push_back(applyResetVectorByte(address, value));
+				address++;
+			}
+		}
+		else {
+			rom.push_back(applyResetVectorByte(address, chunk.byte));
+			address++;
+		}
+	}
+
+	return rom;
+}
+
+bool writeRomBinary(const std::string& filePath) {
+	std::vector<uint8_t> rom = buildRomImage();
+	std::ofstream file(filePath, std::ios::binary);
+	if (!file.is_open()) {
+		std::cout << "Error: Could not open binary output file: " << filePath << "\n";
+		return false;
+	}
+
+	file.write(reinterpret_cast<const char*>(rom.data()), static_cast<std::streamsize>(rom.size()));
+	if (!file.good()) {
+		std::cout << "Error: Failed to write binary output file: " << filePath << "\n";
+		return false;
+	}
+
+	if (ARG_verboseMode) {
+		std::cout << "Wrote " << rom.size() << " ROM bytes to: " << filePath << "\n";
+	}
+
+	return true;
+}
+
 
 // Assembler function to convert assembly code into binary instructions (64-bit)
 bool assemble() {
@@ -811,43 +869,14 @@ bool assemble() {
 		if (ARG_outbin) // If the user has requested to output the assembled binary, print the binary instructions without verbose mode details.
 		{
 			uint16_t address = 0;
-			auto applyResetVectorByte = [](uint16_t byteAddress, uint8_t value) {
-				// Show the final ROM image: .reset patches bytes 0 and 1 with the reset PC.
-				if (resetVectorEnabled && byteAddress == 0) {
-					return static_cast<uint8_t>((resetVectorAddress >> 8) & 0xFF);
-				}
-				if (resetVectorEnabled && byteAddress == 1) {
-					return static_cast<uint8_t>(resetVectorAddress & 0xFF);
-				}
-				return value;
-			};
-
-			for (const RomChunk& chunk : outputRom) {
-				if (chunk.isInstruction) {
-					for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
-						int shift = (INSTRUCTION_SIZE_BYTES - 1 - byte) * 8;
-						uint8_t value = static_cast<uint8_t>((chunk.instruction >> shift) & 0xFF);
-						value = applyResetVectorByte(address, value);
-						std::cout
-							<< std::hex << std::uppercase
-							<< std::setw(4) << std::setfill('0') << address
-							<< ": "
-							<< std::bitset<8>(value)
-							<< std::dec << "\n";
-						address++;
-					}
-				}
-				else {
-					// Raw ROM data bytes get addresses too, so labels/data layout is easy to inspect.
-					uint8_t value = applyResetVectorByte(address, chunk.byte);
-					std::cout
-						<< std::hex << std::uppercase
-						<< std::setw(4) << std::setfill('0') << address
-						<< ": "
-						<< std::bitset<8>(value)
-						<< std::dec << "\n";
-					address++;
-				}
+			for (uint8_t value : buildRomImage()) {
+				std::cout
+					<< std::hex << std::uppercase
+					<< std::setw(4) << std::setfill('0') << address
+					<< ": "
+					<< std::bitset<8>(value)
+					<< std::dec << "\n";
+				address++;
 			}
 		}
 	}

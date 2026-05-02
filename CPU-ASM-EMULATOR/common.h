@@ -26,3 +26,5 @@ extern const char* ARG_asmFilePath; // Non-owning pointer to the assembly file p
 extern bool ARG_outbin; // Global variable to track if the user wants to output the assembled binary
 extern bool ARG_emulate; // Global variable to track if the user wants to emulate the assembled binary
 extern bool ARG_nodefaults; // Global variable to track if the user wants to skip loading default includes (macros)
+extern const char* ARG_binFilePath; // Optional path where the assembled ROM image should be written.
+extern const char* ARG_romFilePath; // Optional path to a ROM binary that should be loaded directly for emulation.

@@ -2,17 +2,12 @@
 ; Press keys to see what the program receives.
 ; Press q or Q to quit.
 
-%macro say reg label
-    movi {reg}, {label}
-    outs {reg}
-%endmacro
-
 start:
-    %say r0 title
+    %print r0 title
     %newline r0
-    %say r0 instructions
+    %print r0 instructions
     %newline r0
-    %say r0 prompt
+    %print r0 prompt
 
 wait_key:
     ; `in` is non-blocking and leaves the register unchanged when no key exists.
@@ -26,17 +21,17 @@ wait_key:
     movi r2, 'Q'
     je r1, r2, quit
 
-    %say r0 seen_text
+    %print r0 seen_text
     out r1
-    %say r0 code_text
+    %print r0 code_text
     outn r1
     %newline r0
-    %say r0 prompt
+    %print r0 prompt
     jmp wait_key
 
 quit:
     %newline r0
-    %say r0 bye_text
+    %print r0 bye_text
     %newline r0
     hlt
 

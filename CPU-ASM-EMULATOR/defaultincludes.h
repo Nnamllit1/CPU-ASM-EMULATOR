@@ -9,8 +9,38 @@ inline constexpr const char* DEFAULT_INCLUDES_ASM = R"asm(
     out {reg}
 %endmacro
 
+%macro putn reg value
+    movi {reg}, {value}
+    outn {reg}
+%endmacro
+
+%macro space reg
+    movi {reg}, 32
+    out {reg}
+%endmacro
+
 %macro newline reg
     movi {reg}, 10
     out {reg}
+%endmacro
+
+%macro print reg label
+    movi {reg}, {label}
+    outs {reg}
+%endmacro
+
+%macro println reg label
+    movi {reg}, {label}
+    outs {reg}
+    movi {reg}, 10
+    out {reg}
+%endmacro
+
+%macro read reg
+    in {reg}
+%endmacro
+
+%macro readkey reg
+    inkey {reg}
 %endmacro
 )asm";

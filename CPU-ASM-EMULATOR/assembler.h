@@ -22,3 +22,4 @@ extern uint16_t resetVectorAddress; // ROM byte address written into reset vecto
 void initializeRegisterNames();
 bool loadDefaultIncludes();
 bool assemble();
+bool writeRomBinary(const std::string& filePath);

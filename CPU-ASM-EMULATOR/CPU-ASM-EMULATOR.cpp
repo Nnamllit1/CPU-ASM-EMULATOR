@@ -9,6 +9,8 @@ const char* ARG_asmFilePath = nullptr; // Non-owning pointer to the assembly fil
 bool ARG_outbin = false; // Global variable to track if the user wants to output the assembled binary
 bool ARG_emulate = false; // Global variable to track if the user wants to emulate the assembled binary
 bool ARG_nodefaults = false; // Global variable to track if the user wants to skip loading default includes (macros)
+const char* ARG_binFilePath = nullptr; // Optional path where the assembled ROM image should be written.
+const char* ARG_romFilePath = nullptr; // Optional path to a ROM binary that should be loaded directly for emulation.
 
 int main(int argc, char* argv[])
 {
@@ -28,7 +30,9 @@ int main(int argc, char* argv[])
 				std::cout << "  --version    Show version information\n";
 				std::cout << "  --verbose    Enable verbose mode\n";
 				std::cout << "  --asm [path] Enable assembly mode and asmbl\n";
+				std::cout << "  --rom [path] Load a ROM binary file directly for emulation\n";
 				std::cout << "  --outbin     Prints the asmbled bin\n";
+				std::cout << "  --bin [path] Write the assembled ROM image to a binary file\n";
 				std::cout << "  --emulate    Emulates the asmbled bin\n";
 				std::cout << "  --nodefaults Do not use default includes (macros)\n";
 				std::cout << "\n";
@@ -66,6 +70,26 @@ int main(int argc, char* argv[])
 				// Set output binary flag to true
 				ARG_outbin = true;
 			}
+			else if (std::string(argv[i]) == "--rom") {
+				if (i + 1 < argc) {
+					ARG_romFilePath = argv[i + 1];
+					i++;
+				}
+				else {
+					std::cout << "Error: --rom option requires a file path argument.\n";
+					return 1;
+				}
+			}
+			else if (std::string(argv[i]) == "--bin") {
+				if (i + 1 < argc) {
+					ARG_binFilePath = argv[i + 1];
+					i++;
+				}
+				else {
+					std::cout << "Error: --bin option requires a file path argument.\n";
+					return 1;
+				}
+			}
 			else if (std::string(argv[i]) == "--emulate") {
 				// Set emulate flag to true
 				ARG_emulate = true;
@@ -89,6 +113,13 @@ int main(int argc, char* argv[])
 				std::cout << "Use --help to see available options.\n";
 			}
 		}
+	}
+
+	if (ARG_asmMode && ARG_romFilePath != nullptr) {
+		// `--asm` builds a ROM image in memory, while `--rom` skips assembly and
+		// loads an existing ROM file. Mixing both would make the startup source ambiguous.
+		std::cout << "Error: --asm and --rom cannot be used together.\n";
+		return 1;
 	}
 
 	if (ARG_asmMode && ARG_asmFilePath != nullptr) {
@@ -136,18 +167,33 @@ int main(int argc, char* argv[])
 			std::cout << "Error: Assembly failed.\n";
 			return 1; // Exit with an error code if assembly fails
 		}
+
+		// `--bin` exports the final patched ROM bytes without changing whether we
+		// also emulate them in the same process.
+		if (ARG_binFilePath != nullptr && !writeRomBinary(ARG_binFilePath)) {
+			return 1;
+		}
 	}
 	if (ARG_emulate) {
 		if (ARG_verboseMode) {
-			std::cout << "Emulation mode enabled. Starting emulation of the assembled binary...\n";
+			std::cout << "Emulation mode enabled. Starting emulation...\n";
 		}
 
-		if (!loadInstructionRom()) {
-			return 1;
+		if (ARG_romFilePath != nullptr) {
+			// Direct ROM mode bypasses the assembler and uses the bytes exactly as stored on disk.
+			if (!loadInstructionRomFromFile(ARG_romFilePath)) {
+				return 1;
+			}
+		}
+		else {
+			// Assembly mode has already filled `outputRom`; convert that into instruction ROM bytes now.
+			if (!loadInstructionRom()) {
+				return 1;
+			}
 		}
 
-		// Prefer the hardware-style reset vector when present; otherwise keep the older .entry fallback.
-		PC = resetVectorEnabled ? readInstructionRomWord(0) : entryPoint;
+		// Assembled programs can carry .reset/.entry metadata; raw ROM files start at byte 0.
+		PC = ARG_romFilePath != nullptr ? 0 : (resetVectorEnabled ? readInstructionRomWord(0) : entryPoint);
 		CPU_halted = false;
 		registers.fill(0); // Initialize all registers to zero before emulation
 		std::fill(std::begin(memory), std::end(memory), 0); // Initialize all memory to zero before emulation
@@ -175,6 +221,6 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		return 0; // Exit if assembly mode is not enabled or if the assembly file path is not provided
+		return 0; // Exit if emulation mode is not enabled.
 	}
 }

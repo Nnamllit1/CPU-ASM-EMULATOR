@@ -62,6 +62,36 @@ bool loadInstructionRom() {
 	return true;
 }
 
+bool loadInstructionRomFromFile(const std::string& filePath) {
+	std::ifstream file(filePath, std::ios::binary);
+	if (!file.is_open()) {
+		std::cout << "Error: Could not open ROM file: " << filePath << "\n";
+		return false;
+	}
+
+	std::fill(std::begin(instructionRom), std::end(instructionRom), 0);
+	file.read(reinterpret_cast<char*>(instructionRom), ADDRESS_SPACE_SIZE);
+	instructionRomSize = static_cast<size_t>(file.gcount());
+
+	if (!file.eof() && file.fail()) {
+		std::cout << "Error: Failed while reading ROM file: " << filePath << "\n";
+		return false;
+	}
+
+	// Raw ROM files do not carry assembler-side entry/reset metadata.
+	// We clear those values so later emulation logic can treat file-backed ROM
+	// as a plain byte image starting at address 0.
+	entryPoint = 0;
+	resetVectorEnabled = false;
+	resetVectorAddress = 0;
+
+	if (ARG_verboseMode) {
+		std::cout << "Loaded " << instructionRomSize << " ROM bytes from: " << filePath << "\n";
+	}
+
+	return true;
+}
+
 uint64_t fetchInstruction(uint16_t addr) {
 	uint64_t instr = 0;
 
@@ -79,7 +109,7 @@ uint16_t readInstructionRomWord(uint16_t addr) {
 		static_cast<uint16_t>(instructionRom[(addr + 1) & 0xFFFF]);
 }
 
-bool pollInputByte(uint8_t& value) {
+bool pollInput(uint16_t& value, bool includeSpecialKeys) {
 #ifdef _WIN32
 	// Interactive console input should behave like hardware key polling:
 	// return immediately, consume one key only when available, and do not echo it.
@@ -91,9 +121,15 @@ bool pollInputByte(uint8_t& value) {
 		int ch = _getch();
 		if (ch == 0 || ch == 224) {
 			ch = _getch();
+			if (!includeSpecialKeys) {
+				return false;
+			}
+
+			value = static_cast<uint16_t>(0x0100 | (ch & 0xFF));
+			return true;
 		}
 
-		value = static_cast<uint8_t>(ch);
+		value = static_cast<uint16_t>(ch & 0xFF);
 		return true;
 	}
 
@@ -116,7 +152,7 @@ bool pollInputByte(uint8_t& value) {
 			return false;
 		}
 
-		value = static_cast<uint8_t>(ch);
+		value = static_cast<uint16_t>(static_cast<unsigned char>(ch));
 		return true;
 	}
 #endif
@@ -132,7 +168,7 @@ bool pollInputByte(uint8_t& value) {
 		return false;
 	}
 
-	value = static_cast<uint8_t>(ch);
+	value = static_cast<uint16_t>(ch & 0xFF);
 	return true;
 }
 
@@ -406,8 +442,8 @@ void execute(uint64_t instr) {
 
 	case 0x002b: // in
 	{
-		uint8_t input = 0;
-		bool hasInput = pollInputByte(input);
+		uint16_t input = 0;
+		bool hasInput = pollInput(input, false);
 		// No input means the register is intentionally left unchanged.
 		// Programs can poll in a loop and decide their own break condition.
 		if (hasInput) {
@@ -416,6 +452,26 @@ void execute(uint64_t instr) {
 
 		if (ARG_verboseMode) {
 			std::cout << "Input instruction: R" << static_cast<int>(rx);
+			if (hasInput) {
+				std::cout << " = " << std::bitset<16>(registers[rx]) << "\n";
+			}
+			else {
+				std::cout << " unchanged; no input available\n";
+			}
+		}
+		break;
+	}
+
+	case 0x002c: // inkey
+	{
+		uint16_t input = 0;
+		bool hasInput = pollInput(input, true);
+		if (hasInput) {
+			registers[rx] = input;
+		}
+
+		if (ARG_verboseMode) {
+			std::cout << "Input key instruction: R" << static_cast<int>(rx);
 			if (hasInput) {
 				std::cout << " = " << std::bitset<16>(registers[rx]) << "\n";
 			}

@@ -178,12 +178,14 @@ movi r3, 'A'       ; ASCII character value
 | Instruction | Usage | Description | Opcode |
 | --- | --- | --- | --- |
 | in | rX | Poll one input character into rX; no input leaves rX unchanged and console keys are not echoed | 0000000000101011 |
+| inkey | rX | Poll one raw key code into rX; extended console keys are returned as `0x0100 + scan_code` | 0000000000101100 |
 | out | rX | Push contents of the register to stdout as an ASCII character | 0000000000001101 |
 | outn | rX | Push contents of the register to stdout as a decimal number | 0000000000100001 |
 | outs | rX | Print a zero-terminated string starting at instruction ROM address rX | 0000000000100010 |
 
 `in` is non-blocking. If no key/input byte is available, the target register keeps its old value.
 Console keypresses are not echoed; print them yourself with `out` if you want them to appear.
+Use `inkey` when you want raw keyboard-ish key codes instead of text characters.
 
 ``` asm
     movi r0, 0
@@ -261,6 +263,15 @@ Default macros are compiled into the emulator executable and are available in ev
 
 ``` asm
 %putc r0 97
+%putn r0 123
+%space r0
 %newline r0
+%print r0 some_string
+%println r0 some_string
+%read r1
+%readkey r2
 hlt
+
+some_string:
+    .asciiz "hello"
 ```

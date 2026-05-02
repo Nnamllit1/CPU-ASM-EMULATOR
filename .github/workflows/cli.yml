@@ -134,6 +134,26 @@ jobs:
               throw "Input instruction did not echo the expected character."
             }
 
+            $keyAsmPath = Join-Path $tempDir "key.asm"
+            @(
+              "start:",
+              "    movi r0, 0",
+              "wait_key:",
+              "    inkey r0",
+              "    jz r0, wait_key",
+              "    out r0",
+              "    hlt"
+            ) | Set-Content -Path $keyAsmPath -Encoding ascii
+
+            $keyRun = "K" | & $exe --asm $keyAsmPath --emulate
+            if ($LASTEXITCODE -ne 0) {
+              throw "Input key emulator returned exit code $LASTEXITCODE."
+            }
+
+            if (($keyRun -join "`n") -notmatch "K") {
+              throw "Input key instruction did not echo the expected character."
+            }
+
             $noInputAsmPath = Join-Path $tempDir "no-input.asm"
             @(
               "start:",
@@ -150,6 +170,30 @@ jobs:
 
             if (($noInputRun -join "`n") -notmatch "A") {
               throw "Input instruction changed the register even though no input was available."
+            }
+
+            $romPath = Join-Path $tempDir "hello.rom"
+            & $exe --asm $asmPath --bin $romPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "Binary writer returned exit code $LASTEXITCODE."
+            }
+
+            $romBytes = [System.IO.File]::ReadAllBytes($romPath)
+            if ($romBytes.Length -ne 56) {
+              throw "Expected binary ROM to contain 56 bytes, got $($romBytes.Length)."
+            }
+
+            if ($romBytes[7] -ne 72) {
+              throw "Binary ROM first instruction was not 'movi r0, 72'."
+            }
+
+            $romRun = & $exe --rom $romPath --emulate
+            if ($LASTEXITCODE -ne 0) {
+              throw "ROM loader returned exit code $LASTEXITCODE."
+            }
+
+            if (($romRun -join "`n") -notmatch "Hi") {
+              throw "Direct ROM emulation did not contain the expected text."
             }
           }
           finally {
