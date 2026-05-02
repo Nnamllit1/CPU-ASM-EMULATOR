@@ -15,11 +15,26 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="assembler.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
     <ClCompile Include="CPU-ASM-EMULATOR.cpp">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="cpu.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="assembler.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="common.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="cpu.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
     <ClInclude Include="defaultincludes.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
