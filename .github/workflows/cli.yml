@@ -80,12 +80,28 @@ jobs:
               throw "Assembler returned exit code $LASTEXITCODE."
             }
 
-            $binaryLines = @($outbin | Where-Object { $_ -match "^[01]{64}$" })
-            if ($binaryLines.Count -ne 7) {
-              throw "Expected 7 encoded instructions from macro expansion, got $($binaryLines.Count)."
+            $binaryLines = @($outbin | Where-Object { $_ -match "^[0-9A-F]{4}: [01]{8}$" })
+            if ($binaryLines.Count -ne 56) {
+              Write-Host "Assembler output:"
+              Write-Host ($outbin -join "`n")
+              throw "Expected 56 encoded bytes from 7 macro-expanded instructions, got $($binaryLines.Count)."
             }
 
-            if ($binaryLines[0] -ne "0000000000000000000000000000000000000000000000000000000001001000") {
+            $expectedFirstInstruction = @(
+              "0000: 00000000",
+              "0001: 00000000",
+              "0002: 00000000",
+              "0003: 00000000",
+              "0004: 00000000",
+              "0005: 00000000",
+              "0006: 00000000",
+              "0007: 01001000"
+            )
+
+            $actualFirstInstruction = @($binaryLines | Select-Object -First 8)
+            if (($actualFirstInstruction -join "`n") -ne ($expectedFirstInstruction -join "`n")) {
+              Write-Host "Assembler output:"
+              Write-Host ($outbin -join "`n")
               throw "First instruction was not 'movi r0, 72'."
             }
 
