@@ -95,6 +95,7 @@ label:
 | .asciiz | "text" | Emit text bytes followed by a zero byte |
 | .word | value | Emit one 16-bit word into instruction ROM |
 | .space | count | Emit count zero bytes into instruction ROM |
+| .align | value | Emit zero bytes until the ROM address is divisible by value |
 
 #### Instruction Reference
 

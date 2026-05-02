@@ -43,6 +43,7 @@ struct RomChunk {
 };
 
 std::vector<RomChunk> outputRom;
+uint16_t outputRomAddress = 0; // Tracks the ROM byte address while emitting chunks in the second pass.
 
 // Stores one macro definition after parsing `%macro name param...`.
 // Body lines are kept as source text, then expanded before labels/instructions are processed.
@@ -364,6 +365,19 @@ bool processLabels() {
 				}
 			}
 
+		} else if (line.rfind(".align", 0) == 0) {
+			// .align N advances to the next ROM address divisible by N.
+			ParsedInstruction ins = parseLine(line);
+
+			if (ins.operands.size() == 1) {
+				int alignment = std::stoi(ins.operands[0]);
+				if (alignment > 0) {
+					while (romAddress % alignment != 0) {
+						romAddress = static_cast<uint16_t>(romAddress + 1);
+					}
+				}
+			}
+
 		} else {
 			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
 		}
@@ -399,6 +413,7 @@ bool processInstruction() {
 				}
 
 				outputRom.push_back({ false, 0, static_cast<uint8_t>(value) });
+				outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
 				continue;
 
 			} else if (ins.mnemonic == ".asciiz") { // Handle .asciiz directive to emit the raw bytes of a string followed by a null terminator into ROM.
@@ -413,9 +428,11 @@ bool processInstruction() {
 
 				for (char c : text) {
 					outputRom.push_back({ false, 0, static_cast<uint8_t>(c) });
+					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
 				}
 
 				outputRom.push_back({ false, 0, 0 });
+				outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
 				continue;
 			
 			} else if (ins.mnemonic == ".ascii") { // Handle .ascii directive to emit the raw bytes of a string into ROM.
@@ -430,6 +447,7 @@ bool processInstruction() {
 
 				for (char c : text) {
 					outputRom.push_back({ false, 0, static_cast<uint8_t>(c) });
+					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
 				}
 
 				continue;
@@ -447,6 +465,7 @@ bool processInstruction() {
 
 				outputRom.push_back({ false, 0, static_cast<uint8_t>((value >> 8) & 0xFF) });
 				outputRom.push_back({ false, 0, static_cast<uint8_t>(value & 0xFF) });
+				outputRomAddress = static_cast<uint16_t>(outputRomAddress + 2);
 				continue;
 
 			} else if (ins.mnemonic == ".space") { // Handle .space directive to reserve a specified number of bytes in ROM (emit zero bytes).
@@ -462,6 +481,25 @@ bool processInstruction() {
 
 				for (int i = 0; i < count; ++i) {
 					outputRom.push_back({ false, 0, 0 });
+					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+				}
+
+				continue;
+
+			} else if (ins.mnemonic == ".align") { // Emit zero bytes until the current ROM address is divisible by the requested alignment.
+				if (ins.operands.size() != 1) {
+					throw std::runtime_error(".align requires exactly one alignment");
+				}
+
+				int alignment = std::stoi(ins.operands[0]);
+
+				if (alignment <= 0 || alignment > 65535) {
+					throw std::runtime_error(".align value must be between 1 and 65535");
+				}
+
+				while (outputRomAddress % alignment != 0) {
+					outputRom.push_back({ false, 0, 0 });
+					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
 				}
 
 				continue;
@@ -472,6 +510,7 @@ bool processInstruction() {
 			// Keep instruction-only output for verbose dumps and --outbin.
 			outputBinary.push_back(encoded);
 			outputRom.push_back({ true, encoded, 0 });
+			outputRomAddress = static_cast<uint16_t>(outputRomAddress + INSTRUCTION_SIZE_BYTES);
 		}
 		catch (const std::exception& e) {
 			// Propagate error details including the source line for easier debugging.
@@ -624,6 +663,11 @@ bool assemble() {
 		std::cout << "Error: Assembly file content is empty after trimming whitespace.\n";
 		return false; // Return false if the assembly file content is empty
 	}
+
+	labels.clear();
+	outputBinary.clear();
+	outputRom.clear();
+	outputRomAddress = 0;
 
 	if (processLabels()) {
 		if (ARG_verboseMode) {
