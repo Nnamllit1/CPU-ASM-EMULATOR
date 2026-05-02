@@ -378,6 +378,18 @@ bool processLabels() {
 				}
 			}
 
+		} else if (line.rfind(".org", 0) == 0) {
+			// .org ADDRESS sets the current ROM byte address to the specified value.	
+			ParsedInstruction ins = parseLine(line);
+
+			if (ins.operands.size() == 1) {
+				int target = std::stoi(ins.operands[0]);
+
+				if (target >= romAddress) {
+					romAddress = static_cast<uint16_t>(target);
+				}
+			}
+
 		} else {
 			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
 		}
@@ -503,8 +515,29 @@ bool processInstruction() {
 				}
 
 				continue;
-			}
 
+			} else if (ins.mnemonic == ".org") { // Move the current ROM address forward to the specified target, emitting zero bytes as needed. .org cannot move backwards.
+				if (ins.operands.size() != 1) {
+					throw std::runtime_error(".org requires exactly one address");
+				}
+
+				int target = std::stoi(ins.operands[0]);
+
+				if (target < 0 || target > 65535) {
+					throw std::runtime_error(".org address must be between 0 and 65535");
+				}
+
+				if (target < outputRomAddress) {
+					throw std::runtime_error(".org cannot move backwards");
+				}
+
+				while (outputRomAddress < target) {
+					outputRom.push_back({ false, 0, 0 });
+					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+				}
+
+				continue;
+			}
 
 			uint64_t encoded = encodeInstruction(ins);
 			// Keep instruction-only output for verbose dumps and --outbin.

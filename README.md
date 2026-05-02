@@ -96,6 +96,7 @@ label:
 | .word | value | Emit one 16-bit word into instruction ROM |
 | .space | count | Emit count zero bytes into instruction ROM |
 | .align | value | Emit zero bytes until the ROM address is divisible by value |
+| .org | address | Move the ROM output position forward to address |
 
 #### Instruction Reference
 
