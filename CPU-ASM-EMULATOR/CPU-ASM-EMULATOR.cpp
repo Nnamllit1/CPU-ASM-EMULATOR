@@ -680,7 +680,14 @@ bool assemble() {
 					}
 				}
 				else {
-					std::cout << std::bitset<8>(chunk.byte) << "\n";
+					// Raw ROM data bytes get addresses too, so labels/data layout is easy to inspect.
+					std::cout
+						<< std::hex << std::uppercase
+						<< std::setw(4) << std::setfill('0') << address
+						<< ": "
+						<< std::bitset<8>(chunk.byte)
+						<< std::dec << "\n";
+					address++;
 				}
 			}
 		}
