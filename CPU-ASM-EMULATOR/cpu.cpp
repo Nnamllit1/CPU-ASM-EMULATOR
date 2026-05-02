@@ -41,6 +41,16 @@ bool loadInstructionRom() {
 		}
 	}
 
+	if (resetVectorEnabled) {
+		// Hardware-style reset vector: ROM bytes 0 and 1 contain the first PC value.
+		// Keep code away from these bytes with `.org 2` or a larger code address.
+		instructionRom[0] = static_cast<uint8_t>((resetVectorAddress >> 8) & 0xFF);
+		instructionRom[1] = static_cast<uint8_t>(resetVectorAddress & 0xFF);
+		if (instructionRomSize < 2) {
+			instructionRomSize = 2;
+		}
+	}
+
 	return true;
 }
 
@@ -54,6 +64,11 @@ uint64_t fetchInstruction(uint16_t addr) {
 	}
 
 	return instr;
+}
+
+uint16_t readInstructionRomWord(uint16_t addr) {
+	return (static_cast<uint16_t>(instructionRom[addr]) << 8) |
+		static_cast<uint16_t>(instructionRom[(addr + 1) & 0xFFFF]);
 }
 
 // Function to read a 16-bit word from memory at the specified address (big-endian)

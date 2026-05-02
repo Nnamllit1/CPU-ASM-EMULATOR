@@ -11,6 +11,8 @@ std::string asmFileContent = ""; // Variable to store the content of the assembl
 std::vector<RomChunk> outputRom;
 uint16_t outputRomAddress = 0; // Tracks the ROM byte address while emitting chunks in the second pass.
 uint16_t entryPoint = 0; // ROM byte address where emulation starts.
+bool resetVectorEnabled = false; // True when `.reset label` should write a hardware-style reset vector.
+uint16_t resetVectorAddress = 0; // ROM byte address written into reset vector bytes 0 and 1.
 
 // Stores one macro definition after parsing `%macro name param...`.
 // Body lines are kept as source text, then expanded before labels/instructions are processed.
@@ -360,6 +362,9 @@ bool processLabels() {
 		} else if (line.rfind(".entry", 0) == 0) {
 			// no ROM bytes
 
+		} else if (line.rfind(".reset", 0) == 0) {
+			// .reset writes the target address into ROM bytes 0 and 1 later, but emits no bytes here.
+
 		} else {
 			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
 		}
@@ -519,6 +524,21 @@ bool processInstruction() {
 				}
 
 				entryPoint = it->second;
+				continue;
+
+			} else if (ins.mnemonic == ".reset") { // Handle .reset directive to write a hardware-style reset vector at ROM address 0.
+				if (ins.operands.size() != 1) {
+					throw std::runtime_error(".reset requires exactly one label");
+				}
+
+				auto it = labels.find(ins.operands[0]);
+				if (it == labels.end()) {
+					throw std::runtime_error("Unknown reset label: " + ins.operands[0]);
+				}
+
+				resetVectorEnabled = true;
+				resetVectorAddress = it->second;
+				entryPoint = it->second; // Keep .entry-style startup in sync for tools that still look at entryPoint.
 				continue;
 
 			}
@@ -686,6 +706,8 @@ bool assemble() {
 	outputRom.clear();
 	outputRomAddress = 0;
 	entryPoint = 0;
+	resetVectorEnabled = false;
+	resetVectorAddress = 0;
 
 	if (processLabels()) {
 		if (ARG_verboseMode) {
@@ -727,11 +749,23 @@ bool assemble() {
 		if (ARG_outbin) // If the user has requested to output the assembled binary, print the binary instructions without verbose mode details.
 		{
 			uint16_t address = 0;
+			auto applyResetVectorByte = [](uint16_t byteAddress, uint8_t value) {
+				// Show the final ROM image: .reset patches bytes 0 and 1 with the reset PC.
+				if (resetVectorEnabled && byteAddress == 0) {
+					return static_cast<uint8_t>((resetVectorAddress >> 8) & 0xFF);
+				}
+				if (resetVectorEnabled && byteAddress == 1) {
+					return static_cast<uint8_t>(resetVectorAddress & 0xFF);
+				}
+				return value;
+			};
+
 			for (const RomChunk& chunk : outputRom) {
 				if (chunk.isInstruction) {
 					for (int byte = 0; byte < INSTRUCTION_SIZE_BYTES; ++byte) {
 						int shift = (INSTRUCTION_SIZE_BYTES - 1 - byte) * 8;
 						uint8_t value = static_cast<uint8_t>((chunk.instruction >> shift) & 0xFF);
+						value = applyResetVectorByte(address, value);
 						std::cout
 							<< std::hex << std::uppercase
 							<< std::setw(4) << std::setfill('0') << address
@@ -743,11 +777,12 @@ bool assemble() {
 				}
 				else {
 					// Raw ROM data bytes get addresses too, so labels/data layout is easy to inspect.
+					uint8_t value = applyResetVectorByte(address, chunk.byte);
 					std::cout
 						<< std::hex << std::uppercase
 						<< std::setw(4) << std::setfill('0') << address
 						<< ": "
-						<< std::bitset<8>(chunk.byte)
+						<< std::bitset<8>(value)
 						<< std::dec << "\n";
 					address++;
 				}

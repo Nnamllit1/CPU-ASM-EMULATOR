@@ -12,4 +12,5 @@ extern bool CPU_halted; // Tracks whether execution has stopped.
 
 bool loadInstructionRom();
 uint64_t fetchInstruction(uint16_t addr);
+uint16_t readInstructionRomWord(uint16_t addr);
 void execute(uint64_t instr);

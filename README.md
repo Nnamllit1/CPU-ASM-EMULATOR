@@ -98,6 +98,7 @@ label:
 | .align | value | Emit zero bytes until the ROM address is divisible by value |
 | .org | address | Move the ROM output position forward to address |
 | .entry | label | Set the ROM address where emulation starts |
+| .reset | label | Write label address into ROM bytes 0 and 1 as the reset vector |
 
 #### Instruction Reference
 
