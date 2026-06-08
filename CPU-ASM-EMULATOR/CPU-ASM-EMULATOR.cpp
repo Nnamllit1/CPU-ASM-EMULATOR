@@ -40,7 +40,7 @@ int main(int argc, char* argv[])
 				return 0;
 			}
 			else if (std::string(argv[i]) == "--version") {
-				std::cout << "CPU-ASM-EMULATOR version 1.0.0\n";
+				std::cout << "CPU-ASM-EMULATOR version 1.0.6\n";
 				return 0;
 			}
 			else if (std::string(argv[i]) == "--verbose") {
