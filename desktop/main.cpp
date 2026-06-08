@@ -157,8 +157,39 @@ void configureDefaultDocking(ImGuiID dockspaceId, const ImVec2& size) {
 	ImGui::DockBuilderDockWindow("Debugger", right);
 	ImGui::DockBuilderDockWindow("Inspector", rightBottom);
 	ImGui::DockBuilderDockWindow("Output", bottom);
-	ImGui::DockBuilderDockWindow("Project Settings", bottom);
 	ImGui::DockBuilderFinish(dockspaceId);
+}
+
+bool circularControl(const char* id, const char* label, const ImVec2& size, ImU32 color, bool& held) {
+	ImGui::InvisibleButton(id, size);
+	const bool activated = ImGui::IsItemActivated();
+	held = ImGui::IsItemActive();
+	const ImVec2 min = ImGui::GetItemRectMin();
+	const ImVec2 max = ImGui::GetItemRectMax();
+	const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+	const float radius = std::min(size.x, size.y) * 0.46f;
+	ImDrawList* draw = ImGui::GetWindowDrawList();
+	draw->AddCircleFilled(center, radius, held ? IM_COL32(235, 238, 240, 255) : color, 32);
+	draw->AddCircle(center, radius, IM_COL32(10, 13, 16, 210), 32, 2.0f);
+	const ImVec2 textSize = ImGui::CalcTextSize(label);
+	draw->AddText(ImVec2(center.x - textSize.x * 0.5f, center.y - textSize.y * 0.5f),
+		held ? IM_COL32(25, 29, 32, 255) : IM_COL32(245, 247, 248, 255), label);
+	return activated;
+}
+
+bool slimControl(const char* id, const char* label, const ImVec2& size, bool& held) {
+	ImGui::InvisibleButton(id, size);
+	const bool activated = ImGui::IsItemActivated();
+	held = ImGui::IsItemActive();
+	const ImVec2 min = ImGui::GetItemRectMin();
+	const ImVec2 max = ImGui::GetItemRectMax();
+	ImDrawList* draw = ImGui::GetWindowDrawList();
+	draw->AddRectFilled(min, max, held ? IM_COL32(210, 216, 219, 255) : IM_COL32(64, 72, 78, 255), size.y * 0.5f);
+	draw->AddRect(min, max, IM_COL32(12, 15, 18, 220), size.y * 0.5f, 0, 1.5f);
+	const ImVec2 textSize = ImGui::CalcTextSize(label);
+	draw->AddText(ImVec2((min.x + max.x - textSize.x) * 0.5f, (min.y + max.y - textSize.y) * 0.5f),
+		held ? IM_COL32(20, 24, 27, 255) : IM_COL32(225, 229, 232, 255), label);
+	return activated;
 }
 
 void clearEditorBreakpoints(TextEditor& editor) {
@@ -275,6 +306,7 @@ int main(int, char**) {
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+	ImGuiContext* mainContext = ImGui::GetCurrentContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_DockingEnable;
 	ImFontConfig fontConfig;
@@ -321,6 +353,13 @@ int main(int, char**) {
 	bool sourceDirty = true;
 	bool validBuild = false;
 	bool centerExecutionLine = false;
+	bool settingsOpen = false;
+	bool resetWorkspace = false;
+	float uiScale = 0.88f;
+	float editorLineSpacing = 1.08f;
+	SDL_Window* settingsWindow = nullptr;
+	SDL_Renderer* settingsRenderer = nullptr;
+	ImGuiContext* settingsContext = nullptr;
 	editor.SetChangeCallback([&] { sourceDirty = true; }, 50);
 
 	std::array<bool, console::ConsoleButtonCount> keyboardHeld{};
@@ -384,7 +423,157 @@ int main(int, char**) {
 		return true;
 	};
 
-	editor.SetLineDecorator(-2.0f, [&](TextEditor::Decorator& decorator) {
+	auto createSettingsWindow = [&]() {
+		if (settingsWindow) return true;
+		settingsWindow = SDL_CreateWindow("CPU ASM Settings", 720, 780,
+			SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+		settingsRenderer = settingsWindow ? SDL_CreateRenderer(settingsWindow, nullptr) : nullptr;
+		if (!settingsWindow || !settingsRenderer) {
+			diagnostics = std::string("Could not open settings window: ") + SDL_GetError() + "\n";
+			if (settingsRenderer) SDL_DestroyRenderer(settingsRenderer);
+			if (settingsWindow) SDL_DestroyWindow(settingsWindow);
+			settingsRenderer = nullptr;
+			settingsWindow = nullptr;
+			settingsOpen = false;
+			return false;
+		}
+		SDL_SetRenderVSync(settingsRenderer, 1);
+		settingsContext = ImGui::CreateContext();
+		ImGui::SetCurrentContext(settingsContext);
+		ImGuiIO& settingsIo = ImGui::GetIO();
+		settingsIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+		ImFontConfig settingsFontConfig;
+		settingsFontConfig.FontDataOwnedByAtlas = false;
+		settingsIo.Fonts->AddFontFromMemoryCompressedTTF(const_cast<unsigned int*>(dejavu), dejavuSize, 16.0f, &settingsFontConfig);
+		applyStyle();
+		ImGui_ImplSDL3_InitForSDLRenderer(settingsWindow, settingsRenderer);
+		ImGui_ImplSDLRenderer3_Init(settingsRenderer);
+		ImGui::SetCurrentContext(mainContext);
+		return true;
+	};
+
+	auto destroySettingsWindow = [&]() {
+		if (!settingsContext) return;
+		ImGui::SetCurrentContext(settingsContext);
+		ImGui_ImplSDLRenderer3_Shutdown();
+		ImGui_ImplSDL3_Shutdown();
+		ImGui::DestroyContext(settingsContext);
+		settingsContext = nullptr;
+		SDL_DestroyRenderer(settingsRenderer);
+		SDL_DestroyWindow(settingsWindow);
+		settingsRenderer = nullptr;
+		settingsWindow = nullptr;
+		ImGui::SetCurrentContext(mainContext);
+	};
+
+	auto renderSettingsContent = [&]() {
+		if (ImGui::BeginTabBar("settings-tabs")) {
+			if (ImGui::BeginTabItem("Project")) {
+				const char* profiles[] = { "Pocket Color", "Home 16", "Custom Hardware" };
+				if (ImGui::Combo("Hardware profile", &selectedProfile, profiles, 3)) configureMachine();
+				if (selectedProfile == static_cast<int>(console::ProfileId::Studio)) {
+					ImGui::TextWrapped("Custom Hardware lets you select the CPU clock, display, memory, graphics, and audio limits yourself.");
+					ImGui::SeparatorText("Custom hardware");
+					int64_t clock = static_cast<int64_t>(project.studio.clockHz);
+					const int64_t minimumClock = 1;
+					const int64_t maximumClock = 1'000'000'000;
+					if (ImGui::SliderScalar("Clock Hz", ImGuiDataType_S64, &clock, &minimumClock, &maximumClock, "%lld", ImGuiSliderFlags_Logarithmic)) project.studio.clockHz = static_cast<uint64_t>(clock);
+					int width = static_cast<int>(project.studio.displayWidth);
+					int height = static_cast<int>(project.studio.displayHeight);
+					if (ImGui::SliderInt("Display width", &width, 64, 1920)) project.studio.displayWidth = static_cast<uint32_t>(width);
+					if (ImGui::SliderInt("Display height", &height, 64, 1080)) project.studio.displayHeight = static_cast<uint32_t>(height);
+					int ramMiB = static_cast<int>(project.studio.ramBytes / (1024 * 1024));
+					int romMiB = static_cast<int>(project.studio.romBytes / (1024 * 1024));
+					int vramMiB = static_cast<int>(project.studio.vramBytes / (1024 * 1024));
+					int storageMiB = static_cast<int>(project.studio.storageBytes / (1024 * 1024));
+					ImGui::SliderInt("RAM MiB", &ramMiB, 1, 256);
+					ImGui::SliderInt("ROM MiB", &romMiB, 1, 512);
+					ImGui::SliderInt("VRAM MiB", &vramMiB, 1, 256);
+					ImGui::SliderInt("Storage MiB", &storageMiB, 0, 256);
+					project.studio.ramBytes = static_cast<size_t>(ramMiB) * 1024 * 1024;
+					project.studio.romBytes = static_cast<size_t>(romMiB) * 1024 * 1024;
+					project.studio.vramBytes = static_cast<size_t>(vramMiB) * 1024 * 1024;
+					project.studio.storageBytes = static_cast<size_t>(storageMiB) * 1024 * 1024;
+					int sprites = static_cast<int>(project.studio.maxSprites);
+					int scanlineSprites = static_cast<int>(project.studio.spritesPerScanline);
+					int paletteColors = static_cast<int>(project.studio.paletteColors);
+					int audioChannels = static_cast<int>(project.studio.audioChannels);
+					ImGui::SliderInt("Sprites", &sprites, 0, 4096);
+					ImGui::SliderInt("Sprites per scanline", &scanlineSprites, 0, 1024);
+					ImGui::SliderInt("Palette colors", &paletteColors, 2, 256);
+					ImGui::SliderInt("Audio channels", &audioChannels, 0, 64);
+					project.studio.maxSprites = static_cast<uint32_t>(sprites);
+					project.studio.spritesPerScanline = static_cast<uint32_t>(scanlineSprites);
+					project.studio.paletteColors = static_cast<uint32_t>(paletteColors);
+					project.studio.audioChannels = static_cast<uint32_t>(audioChannels);
+					if (ImGui::Button("Apply custom hardware")) configureMachine();
+				}
+				ImGui::SeparatorText("Project file");
+				ImGui::InputText("Project", projectPath.data(), projectPath.size());
+				if (ImGui::Button("Load Project")) {
+					std::string error;
+					if (console::loadProject(projectPath.data(), project, error)) {
+						selectedProfile = static_cast<int>(project.profile);
+						std::snprintf(sourcePath.data(), sourcePath.size(), "%s", project.sourcePath.c_str());
+						std::snprintf(storagePath.data(), storagePath.size(), "%s", project.storagePath.c_str());
+						std::snprintf(assetPath.data(), assetPath.size(), "%s", project.assetPath.c_str());
+						configureMachine();
+						std::string text;
+						if (readTextFile(sourcePath.data(), text)) editor.SetText(text);
+						clearEditorBreakpoints(editor);
+						diagnostics = "Project loaded.\n";
+					} else diagnostics = error + "\n";
+				}
+				ImGui::SameLine();
+				if (ImGui::Button("Save Project")) {
+					project.sourcePath = sourcePath.data(); project.storagePath = storagePath.data(); project.assetPath = assetPath.data();
+					std::string error;
+					diagnostics = console::saveProject(projectPath.data(), project, error) ? "Project saved.\n" : error + "\n";
+				}
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Assets")) {
+				ImGui::InputText("Storage file", storagePath.data(), storagePath.size());
+				if (ImGui::Button("Load Storage")) { std::string error; diagnostics = machine.loadStorageFile(storagePath.data(), error) ? "Storage loaded.\n" : error + "\n"; }
+				ImGui::SameLine();
+				if (ImGui::Button("Save Storage")) { std::string error; diagnostics = machine.saveStorageFile(storagePath.data(), error) ? "Storage saved.\n" : error + "\n"; }
+				ImGui::InputText("PPM image", assetPath.data(), assetPath.size());
+				if (ImGui::Button("Import to VRAM")) {
+					console::ImportedImage image; std::string error;
+					if (console::importPpmRgb332(assetPath.data(), image, error) && machine.loadVram(image.rgb332, 0, error)) diagnostics = "Imported RGB332 image.\n";
+					else diagnostics = error + "\n";
+				}
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Controls")) {
+				ImGui::TextDisabled("Physical controller: %s", gamepad ? SDL_GetGamepadName(gamepad) : "not connected");
+				if (ImGui::BeginTable("bindings", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg)) {
+					ImGui::TableSetupColumn("Action"); ImGui::TableSetupColumn("Keyboard"); ImGui::TableSetupColumn("Gamepad"); ImGui::TableHeadersRow();
+					for (size_t i = 0; i < console::ConsoleButtonCount; ++i) {
+						ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextUnformatted(ButtonNames[i]);
+						ImGui::TableNextColumn(); ImGui::PushID(static_cast<int>(i));
+						const std::string keyLabel = captureKeyboard == static_cast<int>(i) ? "Press key..." : SDL_GetKeyName(project.input.keyboard[i]);
+						if (ImGui::Button(keyLabel.empty() ? "Bind key" : keyLabel.c_str(), ImVec2(-1, 0))) captureKeyboard = static_cast<int>(i);
+						ImGui::TableNextColumn();
+						const std::string padName = captureGamepad == static_cast<int>(i) ? "Press button..." : SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(project.input.gamepad[i]));
+						if (ImGui::Button(padName.empty() ? "Bind button" : padName.c_str(), ImVec2(-1, 0))) captureGamepad = static_cast<int>(i);
+						ImGui::PopID();
+					}
+					ImGui::EndTable();
+				}
+				ImGui::EndTabItem();
+			}
+			if (ImGui::BeginTabItem("Appearance")) {
+				ImGui::SliderFloat("UI scale", &uiScale, 0.70f, 1.25f, "%.2fx");
+				ImGui::SliderFloat("Editor line spacing", &editorLineSpacing, 1.0f, 1.5f, "%.2fx");
+				if (ImGui::Button("Reset appearance")) { uiScale = 0.88f; editorLineSpacing = 1.08f; }
+				ImGui::EndTabItem();
+			}
+			ImGui::EndTabBar();
+		}
+	};
+
+	editor.SetLineDecorator(-3.25f, [&](TextEditor::Decorator& decorator) {
 		const bool active = editor.GetUserData(decorator.line) != nullptr;
 		const bool resolved = validBuild && !sourceDirty && currentBuild.sourceLineToAddress.contains(decorator.line + 1);
 		const float size = decorator.height - 2.0f;
@@ -395,18 +584,29 @@ int main(int, char**) {
 			synchronizeBreakpoints();
 		}
 		if (ImGui::IsItemHovered()) ImGui::SetTooltip(active ? "Remove breakpoint" : "Add breakpoint");
-		if (active) {
-			ImGui::GetWindowDrawList()->AddCircleFilled(
-				ImVec2(position.x + decorator.width * 0.5f, position.y + size * 0.5f), size * 0.28f,
-				resolved ? IM_COL32(232, 83, 91, 255) : IM_COL32(214, 158, 67, 255));
-		}
+		ImDrawList* draw = ImGui::GetWindowDrawList();
+		const ImVec2 center(position.x + decorator.width * 0.5f, position.y + size * 0.5f);
+		draw->AddLine(ImVec2(position.x + decorator.width - 2.0f, position.y),
+			ImVec2(position.x + decorator.width - 2.0f, position.y + size), IM_COL32(78, 84, 91, 150));
+		if (active) draw->AddCircleFilled(center, size * 0.29f,
+			resolved ? IM_COL32(236, 72, 82, 255) : IM_COL32(226, 163, 54, 255), 20);
+		else draw->AddCircle(center, size * 0.24f, IM_COL32(125, 132, 140, 210), 20, 1.5f);
 	});
 
 	while (running) {
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
+			SDL_Window* eventWindow = SDL_GetWindowFromEvent(&event);
+			const bool eventInSettings = settingsWindow && eventWindow == settingsWindow;
+			ImGui::SetCurrentContext(eventInSettings ? settingsContext : mainContext);
 			ImGui_ImplSDL3_ProcessEvent(&event);
+			const bool wantCaptureKeyboard = ImGui::GetIO().WantCaptureKeyboard;
+			ImGui::SetCurrentContext(mainContext);
 			if (event.type == SDL_EVENT_QUIT) running = false;
+			if (event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
+				if (eventInSettings) settingsOpen = false;
+				else if (eventWindow == window) running = false;
+			}
 			if (event.type == SDL_EVENT_GAMEPAD_ADDED && !gamepad) gamepad = SDL_OpenGamepad(event.gdevice.which);
 			if (event.type == SDL_EVENT_GAMEPAD_REMOVED && gamepad && SDL_GetGamepadID(gamepad) == event.gdevice.which) {
 				SDL_CloseGamepad(gamepad);
@@ -421,11 +621,11 @@ int main(int, char**) {
 				} else {
 					size_t button = 0;
 					if (bindingMatches(project.input.keyboard, static_cast<int>(event.key.key), button)) {
-						if (!pressed || !io.WantCaptureKeyboard) {
+						if (!eventInSettings && (!pressed || !wantCaptureKeyboard)) {
 							keyboardHeld[button] = pressed;
 							if (pressed && !event.key.repeat) machine.queueInput(static_cast<uint16_t>(project.input.keyboard[button] & 0xFFFF));
 						}
-					} else if (pressed && !event.key.repeat && !io.WantCaptureKeyboard) {
+					} else if (!eventInSettings && pressed && !event.key.repeat && !wantCaptureKeyboard) {
 						machine.queueInput(static_cast<uint16_t>(event.key.key & 0xFFFF));
 					}
 				}
@@ -485,7 +685,25 @@ int main(int, char**) {
 		ImGui_ImplSDLRenderer3_NewFrame();
 		ImGui_ImplSDL3_NewFrame();
 		ImGui::NewFrame();
+		ImGui::GetStyle().FontScaleMain = uiScale;
+		editor.SetLineSpacing(editorLineSpacing);
+		if (ImGui::BeginMainMenuBar()) {
+			if (ImGui::BeginMenu("Project")) {
+				if (ImGui::MenuItem("Settings")) settingsOpen = true;
+				ImGui::EndMenu();
+			}
+			if (ImGui::BeginMenu("View")) {
+				if (ImGui::MenuItem("Settings")) settingsOpen = true;
+				if (ImGui::MenuItem("Reset workspace layout")) resetWorkspace = true;
+				ImGui::EndMenu();
+			}
+			ImGui::EndMainMenuBar();
+		}
 		const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport(), ImGuiDockNodeFlags_PassthruCentralNode);
+		if (resetWorkspace) {
+			ImGui::DockBuilderRemoveNode(dockspaceId);
+			resetWorkspace = false;
+		}
 		configureDefaultDocking(dockspaceId, ImGui::GetMainViewport()->Size);
 
 		int executionLine = 0;
@@ -494,9 +712,6 @@ int main(int, char**) {
 			if (mapped != currentBuild.addressToSourceLine.end()) executionLine = mapped->second;
 		}
 		editor.ClearMarkers();
-		for (int line : editorBreakpointLines(editor)) {
-			editor.AddMarker(line - 1, IM_COL32(120, 38, 46, 255), IM_COL32(95, 28, 34, 75), "Breakpoint", "Breakpoint");
-		}
 		if (executionLine > 0) {
 			editor.AddMarker(executionLine - 1, IM_COL32(177, 132, 42, 255), IM_COL32(177, 132, 42, 50), "Current instruction", "Current instruction");
 			if (centerExecutionLine) editor.ScrollToLine(executionLine - 1, TextEditor::Scroll::alignMiddle);
@@ -549,27 +764,45 @@ int main(int, char**) {
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (available.x - imageSize.x) * 0.5f));
 		ImGui::Image(reinterpret_cast<ImTextureID>(displayTexture), imageSize);
 		ImGui::Separator();
-		const ImVec2 buttonSize(46, 34);
-		auto consoleButton = [&](size_t index, const char* label) {
-			ImGui::PushID(static_cast<int>(index));
-			const bool clicked = ImGui::Button(label, buttonSize);
+		const ImVec2 controlsOrigin = ImGui::GetCursorScreenPos();
+		const float controlsWidth = ImGui::GetContentRegionAvail().x;
+		const float padCell = 30.0f;
+		const ImVec2 padOrigin(controlsOrigin.x + 12.0f, controlsOrigin.y + 8.0f);
+		ImDrawList* controlsDraw = ImGui::GetWindowDrawList();
+		controlsDraw->AddRectFilled(ImVec2(padOrigin.x + padCell, padOrigin.y), ImVec2(padOrigin.x + padCell * 2, padOrigin.y + padCell * 3), IM_COL32(46, 52, 58, 255), 5.0f);
+		controlsDraw->AddRectFilled(ImVec2(padOrigin.x, padOrigin.y + padCell), ImVec2(padOrigin.x + padCell * 3, padOrigin.y + padCell * 2), IM_COL32(46, 52, 58, 255), 5.0f);
+		auto directionButton = [&](size_t index, const char* id, ImVec2 position) {
+			ImGui::SetCursorScreenPos(position);
+			ImGui::PushID(id);
+			ImGui::InvisibleButton("direction", ImVec2(padCell, padCell));
 			screenHeld[index] = ImGui::IsItemActive();
-			if (clicked) machine.queueInput(static_cast<uint16_t>(project.input.keyboard[index] & 0xFFFF));
+			if (ImGui::IsItemActivated()) machine.queueInput(static_cast<uint16_t>(project.input.keyboard[index] & 0xFFFF));
+			if (screenHeld[index]) controlsDraw->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), IM_COL32(112, 127, 135, 255), 4.0f);
 			ImGui::PopID();
 		};
-		ImGui::BeginGroup();
-		ImGui::Indent(48); consoleButton(0, "Up"); ImGui::Unindent(48);
-		consoleButton(2, "Left"); ImGui::SameLine(); consoleButton(3, "Right");
-		ImGui::Indent(48); consoleButton(1, "Down"); ImGui::Unindent(48);
-		ImGui::EndGroup();
-		ImGui::SameLine(0, 38);
-		ImGui::BeginGroup();
-		consoleButton(7, "Select"); ImGui::SameLine(); consoleButton(6, "Start");
-		ImGui::EndGroup();
-		ImGui::SameLine(0, 38);
-		ImGui::BeginGroup();
-		consoleButton(5, "B"); ImGui::SameLine(); consoleButton(4, "A");
-		ImGui::EndGroup();
+		directionButton(0, "up", ImVec2(padOrigin.x + padCell, padOrigin.y));
+		directionButton(1, "down", ImVec2(padOrigin.x + padCell, padOrigin.y + padCell * 2));
+		directionButton(2, "left", ImVec2(padOrigin.x, padOrigin.y + padCell));
+		directionButton(3, "right", ImVec2(padOrigin.x + padCell * 2, padOrigin.y + padCell));
+		const ImU32 arrowColor = IM_COL32(190, 196, 200, 255);
+		controlsDraw->AddTriangleFilled(ImVec2(padOrigin.x + padCell * 1.5f, padOrigin.y + 7), ImVec2(padOrigin.x + padCell + 8, padOrigin.y + 21), ImVec2(padOrigin.x + padCell * 2 - 8, padOrigin.y + 21), arrowColor);
+		controlsDraw->AddTriangleFilled(ImVec2(padOrigin.x + padCell * 1.5f, padOrigin.y + padCell * 3 - 7), ImVec2(padOrigin.x + padCell + 8, padOrigin.y + padCell * 2 + 9), ImVec2(padOrigin.x + padCell * 2 - 8, padOrigin.y + padCell * 2 + 9), arrowColor);
+		controlsDraw->AddTriangleFilled(ImVec2(padOrigin.x + 7, padOrigin.y + padCell * 1.5f), ImVec2(padOrigin.x + 21, padOrigin.y + padCell + 8), ImVec2(padOrigin.x + 21, padOrigin.y + padCell * 2 - 8), arrowColor);
+		controlsDraw->AddTriangleFilled(ImVec2(padOrigin.x + padCell * 3 - 7, padOrigin.y + padCell * 1.5f), ImVec2(padOrigin.x + padCell * 2 + 9, padOrigin.y + padCell + 8), ImVec2(padOrigin.x + padCell * 2 + 9, padOrigin.y + padCell * 2 - 8), arrowColor);
+
+		const float actionX = controlsOrigin.x + controlsWidth - 112.0f;
+		ImGui::SetCursorScreenPos(ImVec2(actionX, controlsOrigin.y + 42.0f));
+		if (circularControl("button-b", "B", ImVec2(48, 48), IM_COL32(80, 145, 190, 255), screenHeld[5])) machine.queueInput(static_cast<uint16_t>(project.input.keyboard[5] & 0xFFFF));
+		ImGui::SetCursorScreenPos(ImVec2(actionX + 54.0f, controlsOrigin.y + 16.0f));
+		if (circularControl("button-a", "A", ImVec2(48, 48), IM_COL32(203, 78, 91, 255), screenHeld[4])) machine.queueInput(static_cast<uint16_t>(project.input.keyboard[4] & 0xFFFF));
+
+		const float centerX = controlsOrigin.x + controlsWidth * 0.5f - 68.0f;
+		ImGui::SetCursorScreenPos(ImVec2(centerX, controlsOrigin.y + 58.0f));
+		if (slimControl("button-select", "Select", ImVec2(62, 23), screenHeld[7])) machine.queueInput(static_cast<uint16_t>(project.input.keyboard[7] & 0xFFFF));
+		ImGui::SetCursorScreenPos(ImVec2(centerX + 72.0f, controlsOrigin.y + 58.0f));
+		if (slimControl("button-start", "Start", ImVec2(62, 23), screenHeld[6])) machine.queueInput(static_cast<uint16_t>(project.input.keyboard[6] & 0xFFFF));
+		ImGui::SetCursorScreenPos(ImVec2(controlsOrigin.x, controlsOrigin.y + 106.0f));
+		ImGui::Dummy(ImVec2(controlsWidth, 1));
 		ImGui::End();
 
 		ImGui::Begin("Debugger");
@@ -656,101 +889,38 @@ int main(int, char**) {
 		}
 		ImGui::End();
 
-		ImGui::Begin("Project Settings");
-		const char* profiles[] = { "Pocket Color", "Home 16", "Studio" };
-		if (ImGui::Combo("Profile", &selectedProfile, profiles, 3)) configureMachine();
-		if (selectedProfile == static_cast<int>(console::ProfileId::Studio) && ImGui::CollapsingHeader("Studio hardware")) {
-			int64_t clock = static_cast<int64_t>(project.studio.clockHz);
-			const int64_t minimumClock = 1;
-			const int64_t maximumClock = 1'000'000'000;
-			if (ImGui::SliderScalar("Clock Hz", ImGuiDataType_S64, &clock, &minimumClock, &maximumClock, "%lld", ImGuiSliderFlags_Logarithmic)) project.studio.clockHz = static_cast<uint64_t>(clock);
-			int width = static_cast<int>(project.studio.displayWidth);
-			int height = static_cast<int>(project.studio.displayHeight);
-			if (ImGui::SliderInt("Width", &width, 64, 1920)) project.studio.displayWidth = static_cast<uint32_t>(width);
-			if (ImGui::SliderInt("Height", &height, 64, 1080)) project.studio.displayHeight = static_cast<uint32_t>(height);
-			int ramMiB = static_cast<int>(project.studio.ramBytes / (1024 * 1024));
-			int romMiB = static_cast<int>(project.studio.romBytes / (1024 * 1024));
-			int vramMiB = static_cast<int>(project.studio.vramBytes / (1024 * 1024));
-			int storageMiB = static_cast<int>(project.studio.storageBytes / (1024 * 1024));
-			ImGui::SliderInt("RAM MiB", &ramMiB, 1, 256);
-			ImGui::SliderInt("ROM MiB", &romMiB, 1, 512);
-			ImGui::SliderInt("VRAM MiB", &vramMiB, 1, 256);
-			ImGui::SliderInt("Storage MiB", &storageMiB, 0, 256);
-			project.studio.ramBytes = static_cast<size_t>(ramMiB) * 1024 * 1024;
-			project.studio.romBytes = static_cast<size_t>(romMiB) * 1024 * 1024;
-			project.studio.vramBytes = static_cast<size_t>(vramMiB) * 1024 * 1024;
-			project.studio.storageBytes = static_cast<size_t>(storageMiB) * 1024 * 1024;
-			int sprites = static_cast<int>(project.studio.maxSprites);
-			int scanlineSprites = static_cast<int>(project.studio.spritesPerScanline);
-			int paletteColors = static_cast<int>(project.studio.paletteColors);
-			int audioChannels = static_cast<int>(project.studio.audioChannels);
-			ImGui::SliderInt("Sprites", &sprites, 0, 4096);
-			ImGui::SliderInt("Sprites per scanline", &scanlineSprites, 0, 1024);
-			ImGui::SliderInt("Palette colors", &paletteColors, 2, 256);
-			ImGui::SliderInt("Audio channels", &audioChannels, 0, 64);
-			project.studio.maxSprites = static_cast<uint32_t>(sprites);
-			project.studio.spritesPerScanline = static_cast<uint32_t>(scanlineSprites);
-			project.studio.paletteColors = static_cast<uint32_t>(paletteColors);
-			project.studio.audioChannels = static_cast<uint32_t>(audioChannels);
-			if (ImGui::Button("Apply hardware settings")) configureMachine();
-		}
-		ImGui::InputText("Project", projectPath.data(), projectPath.size());
-		if (ImGui::Button("Load Project")) {
-			std::string error;
-			if (console::loadProject(projectPath.data(), project, error)) {
-				selectedProfile = static_cast<int>(project.profile);
-				std::snprintf(sourcePath.data(), sourcePath.size(), "%s", project.sourcePath.c_str());
-				std::snprintf(storagePath.data(), storagePath.size(), "%s", project.storagePath.c_str());
-				std::snprintf(assetPath.data(), assetPath.size(), "%s", project.assetPath.c_str());
-				configureMachine();
-				std::string text;
-				if (readTextFile(sourcePath.data(), text)) editor.SetText(text);
-				clearEditorBreakpoints(editor);
-				diagnostics = "Project loaded.\n";
-			} else diagnostics = error + "\n";
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("Save Project")) {
-			project.sourcePath = sourcePath.data(); project.storagePath = storagePath.data(); project.assetPath = assetPath.data();
-			std::string error;
-			diagnostics = console::saveProject(projectPath.data(), project, error) ? "Project saved.\n" : error + "\n";
-		}
-		ImGui::SeparatorText("Storage and assets");
-		ImGui::InputText("Storage file", storagePath.data(), storagePath.size());
-		if (ImGui::Button("Load Storage")) { std::string error; diagnostics = machine.loadStorageFile(storagePath.data(), error) ? "Storage loaded.\n" : error + "\n"; }
-		ImGui::SameLine();
-		if (ImGui::Button("Save Storage")) { std::string error; diagnostics = machine.saveStorageFile(storagePath.data(), error) ? "Storage saved.\n" : error + "\n"; }
-		ImGui::InputText("PPM image", assetPath.data(), assetPath.size());
-		if (ImGui::Button("Import to VRAM")) {
-			console::ImportedImage image; std::string error;
-			if (console::importPpmRgb332(assetPath.data(), image, error) && machine.loadVram(image.rgb332, 0, error)) diagnostics = "Imported RGB332 image.\n";
-			else diagnostics = error + "\n";
-		}
-		ImGui::SeparatorText("Input bindings");
-		ImGui::TextDisabled("Controller: %s", gamepad ? SDL_GetGamepadName(gamepad) : "not connected");
-		if (ImGui::BeginTable("bindings", 3, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg)) {
-			ImGui::TableSetupColumn("Action"); ImGui::TableSetupColumn("Keyboard"); ImGui::TableSetupColumn("Gamepad"); ImGui::TableHeadersRow();
-			for (size_t i = 0; i < console::ConsoleButtonCount; ++i) {
-				ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::TextUnformatted(ButtonNames[i]);
-				ImGui::TableNextColumn(); ImGui::PushID(static_cast<int>(i));
-				const std::string keyLabel = captureKeyboard == static_cast<int>(i) ? "Press key..." : SDL_GetKeyName(project.input.keyboard[i]);
-				if (ImGui::Button(keyLabel.empty() ? "Bind key" : keyLabel.c_str(), ImVec2(-1, 0))) captureKeyboard = static_cast<int>(i);
-				ImGui::TableNextColumn();
-				const std::string padName = captureGamepad == static_cast<int>(i) ? "Press button..." : SDL_GetGamepadStringForButton(static_cast<SDL_GamepadButton>(project.input.gamepad[i]));
-				if (ImGui::Button(padName.empty() ? "Bind button" : padName.c_str(), ImVec2(-1, 0))) captureGamepad = static_cast<int>(i);
-				ImGui::PopID();
-			}
-			ImGui::EndTable();
-		}
-		ImGui::End();
 
 		ImGui::Render();
 		SDL_SetRenderDrawColor(renderer, 14, 16, 19, 255);
 		SDL_RenderClear(renderer);
 		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), renderer);
 		SDL_RenderPresent(renderer);
+
+		if (settingsOpen && !settingsWindow) createSettingsWindow();
+		if (!settingsOpen && settingsWindow) destroySettingsWindow();
+		if (settingsContext) {
+			ImGui::SetCurrentContext(settingsContext);
+			ImGui_ImplSDLRenderer3_NewFrame();
+			ImGui_ImplSDL3_NewFrame();
+			ImGui::NewFrame();
+			ImGui::GetStyle().FontScaleMain = uiScale;
+			ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
+			ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize, ImGuiCond_Always);
+			ImGui::Begin("Settings Content", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+				ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+			renderSettingsContent();
+			ImGui::End();
+			ImGui::Render();
+			SDL_SetRenderDrawColor(settingsRenderer, 18, 20, 23, 255);
+			SDL_RenderClear(settingsRenderer);
+			ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), settingsRenderer);
+			SDL_RenderPresent(settingsRenderer);
+			ImGui::SetCurrentContext(mainContext);
+		}
 	}
 
+	destroySettingsWindow();
+	ImGui::SetCurrentContext(mainContext);
 	if (gamepad) SDL_CloseGamepad(gamepad);
 	if (displayTexture) SDL_DestroyTexture(displayTexture);
 	if (audioStream) SDL_DestroyAudioStream(audioStream);

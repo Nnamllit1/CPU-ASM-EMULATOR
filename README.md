@@ -34,7 +34,7 @@ cmake --build build-console --parallel
 ./build-console/CPU-ASM-CONSOLE
 ```
 
-The desktop environment uses a syntax-highlighting assembly editor with gutter breakpoints and current-line execution highlighting. Its Run action builds, loads, resets, and starts in one step. Keyboard, physical SDL gamepads, and on-screen console controls share configurable bindings, and the Inspector window exposes RAM, VRAM, ROM, storage, device registers, framebuffer output, and raw RGB332 VRAM.
+The desktop environment uses a syntax-highlighting assembly editor with visible gutter breakpoints and current-line execution highlighting. Its Run action builds, loads, resets, and starts in one step. Keyboard, physical SDL gamepads, and console-style on-screen controls share configurable bindings, and the Inspector window exposes RAM, VRAM, ROM, storage, device registers, framebuffer output, and raw RGB332 VRAM. Open `Project > Settings` for a separate native settings window containing the custom hardware profile, controls, assets, and adjustable UI scale.
 
 ## Specifications
 

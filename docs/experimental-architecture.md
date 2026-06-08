@@ -56,7 +56,7 @@ The assembly convenience library writes the same registers and VRAM used by dire
 
 ## Desktop Development Environment
 
-The SDL3 desktop target provides a dockable assembly editor, console display, source-level debugger, build/program output, project settings, and RAM/VRAM/ROM/storage/device inspectors. `Run` assembles the current editor contents, loads a fresh ROM, resets the machine, and starts execution. Editor-gutter breakpoints and the highlighted execution line use assembler-generated source mappings, including mappings from expanded macro instructions back to their invocation line.
+The SDL3 desktop target provides a dockable assembly editor, console display, source-level debugger, build/program output, and RAM/VRAM/ROM/storage/device inspectors. Project, custom-hardware, control, asset, and appearance settings open in a separate native SDL window. `Run` assembles the current editor contents, loads a fresh ROM, resets the machine, and starts execution. Editor-gutter breakpoints and the highlighted execution line use assembler-generated source mappings, including mappings from expanded macro instructions back to their invocation line.
 
 Keyboard, SDL gamepad, and on-screen controls feed the same eight logical console buttons. Projects can persist keyboard and gamepad bindings. Button holds are exposed through `FF22-FF23`, while the existing queued input registers and `in`/`inkey` instructions remain available for event-oriented input.
 
