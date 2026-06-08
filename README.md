@@ -4,6 +4,22 @@ This is a simple emulator and ASM compiler for the "IDK i want to emulate a proc
 
 This is a project that may actually be actively be worked on by me for longer than 2 weeks. (This is not intended to be a promise.)
 
+## Building
+
+### Windows
+
+Open `CPU-ASM-EMULATOR.slnx` in Visual Studio or build it with MSBuild.
+
+### Linux
+
+The Linux build requires CMake 3.20 or newer and a C++20 compiler.
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+./build/CPU-ASM-EMULATOR --help
+```
+
 ## Specifications
 
 - CPU: 16 bit

@@ -7,6 +7,11 @@
 #include <conio.h>
 #include <io.h>
 #include <windows.h>
+#else
+#include <cerrno>
+#include <poll.h>
+#include <termios.h>
+#include <unistd.h>
 #endif
 
 // CPU emulator variables
@@ -155,21 +160,98 @@ bool pollInput(uint16_t& value, bool includeSpecialKeys) {
 		value = static_cast<uint16_t>(static_cast<unsigned char>(ch));
 		return true;
 	}
-#endif
 
-	// Portable fallback for non-Windows builds. This keeps the same "poll,
-	// then read only if available" behavior when the stream reports availability.
-	if (std::cin.rdbuf()->in_avail() <= 0) {
+	return false;
+#else
+	class PosixTerminalMode {
+	public:
+		PosixTerminalMode() {
+			if (!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &originalMode) != 0) {
+				return;
+			}
+
+			termios rawMode = originalMode;
+			rawMode.c_lflag &= static_cast<tcflag_t>(~(ICANON | ECHO));
+			rawMode.c_cc[VMIN] = 0;
+			rawMode.c_cc[VTIME] = 0;
+			enabled = tcsetattr(STDIN_FILENO, TCSANOW, &rawMode) == 0;
+		}
+
+		~PosixTerminalMode() {
+			if (enabled) {
+				tcsetattr(STDIN_FILENO, TCSANOW, &originalMode);
+			}
+		}
+
+	private:
+		termios originalMode{};
+		bool enabled = false;
+	};
+
+	// Keep interactive terminals non-canonical while the emulator runs. Pipes
+	// and redirected files do not need terminal configuration.
+	static PosixTerminalMode terminalMode;
+	(void)terminalMode;
+
+	pollfd inputFd{};
+	inputFd.fd = STDIN_FILENO;
+	inputFd.events = POLLIN;
+
+	int pollResult = 0;
+	do {
+		pollResult = poll(&inputFd, 1, 0);
+	} while (pollResult < 0 && errno == EINTR);
+
+	if (pollResult <= 0 || (inputFd.revents & (POLLIN | POLLHUP)) == 0) {
 		return false;
 	}
 
-	int ch = std::cin.get();
-	if (ch == EOF) {
+	auto readByte = [](unsigned char& byte) {
+		ssize_t bytesRead = 0;
+		do {
+			bytesRead = read(STDIN_FILENO, &byte, 1);
+		} while (bytesRead < 0 && errno == EINTR);
+		return bytesRead == 1;
+	};
+
+	unsigned char ch = 0;
+	if (!readByte(ch)) {
 		return false;
 	}
 
-	value = static_cast<uint16_t>(ch & 0xFF);
+	if (ch == 0x1B && isatty(STDIN_FILENO)) {
+		pollfd sequenceFd{};
+		sequenceFd.fd = STDIN_FILENO;
+		sequenceFd.events = POLLIN;
+
+		unsigned char prefix = 0;
+		unsigned char code = 0;
+		if (poll(&sequenceFd, 1, 0) > 0 && readByte(prefix) && prefix == '[' &&
+			poll(&sequenceFd, 1, 0) > 0 && readByte(code)) {
+			uint16_t scanCode = 0;
+			switch (code) {
+			case 'A': scanCode = 72; break; // Up
+			case 'B': scanCode = 80; break; // Down
+			case 'C': scanCode = 77; break; // Right
+			case 'D': scanCode = 75; break; // Left
+			case 'H': scanCode = 71; break; // Home
+			case 'F': scanCode = 79; break; // End
+			default: break;
+			}
+
+			if (scanCode != 0) {
+				if (!includeSpecialKeys) {
+					return false;
+				}
+				value = static_cast<uint16_t>(0x0100 | scanCode);
+				return true;
+			}
+		}
+	}
+
+	value = static_cast<uint16_t>(ch);
 	return true;
+#endif
 }
 
 // Function to read a 16-bit word from memory at the specified address (big-endian)
@@ -489,5 +571,3 @@ void execute(uint64_t instr) {
 
 	PC = static_cast<uint16_t>(PC + INSTRUCTION_SIZE_BYTES);
 }
-
-
