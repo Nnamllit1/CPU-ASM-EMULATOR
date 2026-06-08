@@ -14,6 +14,7 @@ HardwareProfile pocketProfile() {
 		256 * 1024,
 		1024 * 1024,
 		64 * 1024,
+		64 * 1024,
 		40,
 		10,
 		32,
@@ -32,6 +33,7 @@ HardwareProfile homeProfile() {
 		1024 * 1024,
 		4 * 1024 * 1024,
 		256 * 1024,
+		1024 * 1024,
 		128,
 		32,
 		256,
@@ -50,6 +52,7 @@ HardwareProfile studioProfile() {
 		16 * 1024 * 1024,
 		32 * 1024 * 1024,
 		16 * 1024 * 1024,
+		32 * 1024 * 1024,
 		4096,
 		1024,
 		256,
@@ -88,6 +91,10 @@ bool validateProfile(const HardwareProfile& profile, std::string& error) {
 	const size_t framebufferBytes = static_cast<size_t>(profile.displayWidth) * profile.displayHeight;
 	if (profile.vramBytes < framebufferBytes || profile.vramBytes > 256ULL * 1024 * 1024) {
 		error = "VRAM must fit one RGB332 framebuffer and cannot exceed 256 MiB.";
+		return false;
+	}
+	if (profile.storageBytes > 256ULL * 1024 * 1024) {
+		error = "Persistent storage cannot exceed 256 MiB.";
 		return false;
 	}
 	if (profile.framesPerSecond < 1 || profile.framesPerSecond > 240) {

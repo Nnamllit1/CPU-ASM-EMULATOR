@@ -21,6 +21,7 @@ struct HardwareProfile {
 	size_t ramBytes = 256 * 1024;
 	size_t romBytes = 1024 * 1024;
 	size_t vramBytes = 64 * 1024;
+	size_t storageBytes = 64 * 1024;
 	uint32_t maxSprites = 40;
 	uint32_t spritesPerScanline = 10;
 	uint32_t paletteColors = 32;

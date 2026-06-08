@@ -1,6 +1,7 @@
 #include "console_machine.h"
 
 #include <algorithm>
+#include <fstream>
 #include <sstream>
 
 namespace console {
@@ -11,9 +12,12 @@ constexpr uint16_t BankedRamStart = 0x8000;
 constexpr uint16_t BankedRamEnd = 0xBFFF;
 constexpr uint16_t VramStart = 0xC000;
 constexpr uint16_t VramEnd = 0xDFFF;
+constexpr uint16_t StorageStart = 0xE000;
+constexpr uint16_t StorageEnd = 0xFEFF;
 constexpr uint16_t DeviceStart = 0xFF00;
 constexpr size_t RamBankWindow = 0x4000;
 constexpr size_t VramBankWindow = 0x2000;
+constexpr size_t StorageBankWindow = 0x1F00;
 constexpr size_t RomBankWindow = 0x8000;
 constexpr size_t TileMapOffset = 0x4000;
 constexpr size_t SpriteTableOffset = 0x5000;
@@ -46,7 +50,9 @@ bool ConsoleMachine::configure(const HardwareProfile& profile, std::string& erro
 	ram_.assign(profile_.ramBytes, 0);
 	vram_.assign(profile_.vramBytes, 0);
 	rom_.assign(profile_.romBytes, 0);
+	storage_.assign(profile_.storageBytes, 0);
 	framebuffer_.assign(static_cast<size_t>(profile_.displayWidth) * profile_.displayHeight, 0x000000FF);
+	audioChannels_.assign(profile_.audioChannels, AudioChannel{});
 	entryPoint_ = 0;
 	reset();
 	return true;
@@ -78,8 +84,13 @@ void ConsoleMachine::reset() {
 	ramBank_ = 0;
 	vramBank_ = 0;
 	romBank_ = 0;
+	storageBank_ = 0;
 	ppuControl_ = 1;
 	spriteCount_ = 0;
+	selectedAudioChannel_ = 0;
+	std::fill(audioChannels_.begin(), audioChannels_.end(), AudioChannel{});
+	audioCycleAccumulator_ = 0;
+	audioSamples_.clear();
 	state_ = MachineState::Ready;
 	faultCode_ = FaultCode::None;
 	faultMessage_.clear();
@@ -139,6 +150,50 @@ void ConsoleMachine::clearBreakpoints() { breakpoints_.clear(); }
 bool ConsoleMachine::hasBreakpoint(uint16_t address) const { return breakpoints_.contains(address); }
 void ConsoleMachine::queueInput(uint16_t value) { inputQueue_.push_back(value); }
 
+bool ConsoleMachine::loadStorageFile(const std::string& path, std::string& error) {
+	std::ifstream input(path, std::ios::binary);
+	if (!input) {
+		error = "Could not open storage file: " + path;
+		return false;
+	}
+	std::fill(storage_.begin(), storage_.end(), 0);
+	input.read(reinterpret_cast<char*>(storage_.data()), static_cast<std::streamsize>(storage_.size()));
+	error.clear();
+	return true;
+}
+
+bool ConsoleMachine::saveStorageFile(const std::string& path, std::string& error) const {
+	std::ofstream output(path, std::ios::binary);
+	if (!output) {
+		error = "Could not write storage file: " + path;
+		return false;
+	}
+	output.write(reinterpret_cast<const char*>(storage_.data()), static_cast<std::streamsize>(storage_.size()));
+	if (!output.good()) {
+		error = "Failed while writing storage file: " + path;
+		return false;
+	}
+	error.clear();
+	return true;
+}
+
+bool ConsoleMachine::loadVram(const std::vector<uint8_t>& bytes, size_t offset, std::string& error) {
+	if (offset > vram_.size() || bytes.size() > vram_.size() - offset) {
+		error = "Asset does not fit in profile VRAM.";
+		return false;
+	}
+	std::copy(bytes.begin(), bytes.end(), vram_.begin() + static_cast<std::ptrdiff_t>(offset));
+	refreshFramebuffer();
+	error.clear();
+	return true;
+}
+
+std::vector<float> ConsoleMachine::drainAudioSamples() {
+	std::vector<float> samples;
+	samples.swap(audioSamples_);
+	return samples;
+}
+
 size_t ConsoleMachine::mappedRamIndex(uint16_t address) const {
 	if (address <= FixedRamEnd) {
 		return static_cast<size_t>(address) % ram_.size();
@@ -156,15 +211,25 @@ size_t ConsoleMachine::mappedVramIndex(uint16_t address) const {
 	return ((static_cast<size_t>(vramBank_) % bankCount) * VramBankWindow + (address - VramStart)) % vram_.size();
 }
 
+size_t ConsoleMachine::mappedStorageIndex(uint16_t address) const {
+	if (storage_.empty()) return 0;
+	const size_t bankCount = std::max<size_t>(1, storage_.size() / StorageBankWindow);
+	return ((static_cast<size_t>(storageBank_) % bankCount) * StorageBankWindow + (address - StorageStart)) % storage_.size();
+}
+
 uint8_t ConsoleMachine::readByte(uint16_t address) const {
 	if (address >= VramStart && address <= VramEnd) {
 		return vram_[mappedVramIndex(address)];
+	}
+	if (address >= StorageStart && address <= StorageEnd) {
+		return storage_.empty() ? 0 : storage_[mappedStorageIndex(address)];
 	}
 	if (address >= DeviceStart) {
 		switch (address) {
 		case RAM_BANK_REGISTER: return ramBank_;
 		case VRAM_BANK_REGISTER: return vramBank_;
 		case ROM_BANK_REGISTER: return romBank_;
+		case STORAGE_BANK_REGISTER: return storageBank_;
 		case PPU_CONTROL_REGISTER: return ppuControl_;
 		case PPU_STATUS_REGISTER: return cyclesIntoFrame_ == 0 ? 1 : 0;
 		case PPU_SPRITE_COUNT_REGISTER: return static_cast<uint8_t>(spriteCount_ & 0xFF);
@@ -173,6 +238,15 @@ uint8_t ConsoleMachine::readByte(uint16_t address) const {
 		case INPUT_DATA_REGISTER: return inputQueue_.empty() ? 0 : static_cast<uint8_t>(inputQueue_.front() & 0xFF);
 		case PROFILE_ID_REGISTER: return static_cast<uint8_t>(profile_.id);
 		case FAULT_CODE_REGISTER: return static_cast<uint8_t>(faultCode_);
+		case AUDIO_CHANNEL_REGISTER: return selectedAudioChannel_;
+		case AUDIO_CONTROL_REGISTER:
+			return audioChannels_.empty() ? 0 : static_cast<uint8_t>(audioChannels_[selectedAudioChannel_ % audioChannels_.size()].enabled);
+		case AUDIO_FREQUENCY_LOW_REGISTER:
+			return audioChannels_.empty() ? 0 : static_cast<uint8_t>(audioChannels_[selectedAudioChannel_ % audioChannels_.size()].frequency & 0xFF);
+		case AUDIO_FREQUENCY_HIGH_REGISTER:
+			return audioChannels_.empty() ? 0 : static_cast<uint8_t>((audioChannels_[selectedAudioChannel_ % audioChannels_.size()].frequency >> 8) & 0xFF);
+		case AUDIO_VOLUME_REGISTER:
+			return audioChannels_.empty() ? 0 : audioChannels_[selectedAudioChannel_ % audioChannels_.size()].volume;
 		default: return 0;
 		}
 	}
@@ -184,17 +258,39 @@ void ConsoleMachine::writeByte(uint16_t address, uint8_t value) {
 		vram_[mappedVramIndex(address)] = value;
 		return;
 	}
+	if (address >= StorageStart && address <= StorageEnd) {
+		if (!storage_.empty()) storage_[mappedStorageIndex(address)] = value;
+		return;
+	}
 	if (address >= DeviceStart) {
 		switch (address) {
 		case RAM_BANK_REGISTER: ramBank_ = value; break;
 		case VRAM_BANK_REGISTER: vramBank_ = value; break;
 		case ROM_BANK_REGISTER: romBank_ = value; break;
+		case STORAGE_BANK_REGISTER: storageBank_ = value; break;
 		case PPU_CONTROL_REGISTER: ppuControl_ = value; break;
 		case PPU_PRESENT_REGISTER: refreshFramebuffer(); break;
 		case PPU_SPRITE_COUNT_REGISTER: spriteCount_ = static_cast<uint16_t>((spriteCount_ & 0xFF00) | value); break;
 		case PPU_SPRITE_COUNT_HIGH_REGISTER: spriteCount_ = static_cast<uint16_t>((spriteCount_ & 0x00FF) | (value << 8)); break;
 		case INPUT_DATA_REGISTER:
 			if (!inputQueue_.empty()) inputQueue_.pop_front();
+			break;
+		case AUDIO_CHANNEL_REGISTER:
+			selectedAudioChannel_ = audioChannels_.empty() ? 0 : static_cast<uint8_t>(value % audioChannels_.size());
+			break;
+		case AUDIO_CONTROL_REGISTER:
+			if (!audioChannels_.empty()) audioChannels_[selectedAudioChannel_].enabled = (value & 1) != 0;
+			break;
+		case AUDIO_FREQUENCY_LOW_REGISTER:
+			if (!audioChannels_.empty()) audioChannels_[selectedAudioChannel_].frequency =
+				static_cast<uint16_t>((audioChannels_[selectedAudioChannel_].frequency & 0xFF00) | value);
+			break;
+		case AUDIO_FREQUENCY_HIGH_REGISTER:
+			if (!audioChannels_.empty()) audioChannels_[selectedAudioChannel_].frequency =
+				static_cast<uint16_t>((audioChannels_[selectedAudioChannel_].frequency & 0x00FF) | (value << 8));
+			break;
+		case AUDIO_VOLUME_REGISTER:
+			if (!audioChannels_.empty()) audioChannels_[selectedAudioChannel_].volume = value;
 			break;
 		default: break;
 		}
@@ -366,12 +462,34 @@ void ConsoleMachine::refreshFramebuffer() {
 }
 
 void ConsoleMachine::advanceDevices(uint32_t consumedCycles) {
+	generateAudio(consumedCycles);
 	cyclesIntoFrame_ += consumedCycles;
 	const uint64_t cyclesPerFrame = std::max<uint64_t>(1, profile_.clockHz / profile_.framesPerSecond);
 	while (cyclesIntoFrame_ >= cyclesPerFrame) {
 		cyclesIntoFrame_ -= cyclesPerFrame;
 		++frames_;
 		refreshFramebuffer();
+	}
+}
+
+void ConsoleMachine::generateAudio(uint32_t consumedCycles) {
+	if (audioChannels_.empty() || profile_.clockHz == 0) return;
+	constexpr uint64_t sampleRate = 48'000;
+	audioCycleAccumulator_ += static_cast<uint64_t>(consumedCycles) * sampleRate;
+	while (audioCycleAccumulator_ >= profile_.clockHz && audioSamples_.size() < sampleRate * 2) {
+		audioCycleAccumulator_ -= profile_.clockHz;
+		double mixed = 0.0;
+		size_t activeChannels = 0;
+		for (AudioChannel& channel : audioChannels_) {
+			if (!channel.enabled || channel.volume == 0 || channel.frequency == 0) continue;
+			++activeChannels;
+			channel.phase += static_cast<double>(channel.frequency) / sampleRate;
+			if (channel.phase >= 1.0) channel.phase -= static_cast<uint64_t>(channel.phase);
+			const double wave = channel.phase < 0.5 ? 1.0 : -1.0;
+			mixed += wave * (static_cast<double>(channel.volume) / 255.0);
+		}
+		mixed /= static_cast<double>(std::max<size_t>(1, activeChannels));
+		audioSamples_.push_back(static_cast<float>(std::clamp(mixed, -1.0, 1.0)));
 	}
 }
 

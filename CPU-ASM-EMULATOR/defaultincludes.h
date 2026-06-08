@@ -59,6 +59,11 @@ inline constexpr const char* DEFAULT_INCLUDES_ASM = R"asm(
     stbi {reg}, 0xFF02
 %endmacro
 
+%macro storagebank reg bank
+    movi {reg}, {bank}
+    stbi {reg}, 0xFF03
+%endmacro
+
 %macro ppumode reg mode
     movi {reg}, {mode}
     stbi {reg}, 0xFF10
@@ -72,5 +77,25 @@ inline constexpr const char* DEFAULT_INCLUDES_ASM = R"asm(
 %macro sprites reg count
     movi {reg}, {count}
     stbi {reg}, 0xFF13
+%endmacro
+
+%macro tone reg channel freqlo freqhi volume
+    movi {reg}, {channel}
+    stbi {reg}, 0xFF40
+    movi {reg}, {freqlo}
+    stbi {reg}, 0xFF42
+    movi {reg}, {freqhi}
+    stbi {reg}, 0xFF43
+    movi {reg}, {volume}
+    stbi {reg}, 0xFF44
+    movi {reg}, 1
+    stbi {reg}, 0xFF41
+%endmacro
+
+%macro toneoff reg channel
+    movi {reg}, {channel}
+    stbi {reg}, 0xFF40
+    movi {reg}, 0
+    stbi {reg}, 0xFF41
 %endmacro
 )asm";

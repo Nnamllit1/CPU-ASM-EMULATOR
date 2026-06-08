@@ -1,9 +1,11 @@
 #include "console/console_machine.h"
+#include "console/asset_import.h"
 #include "console/project.h"
 #include "console/source_builder.h"
 
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -89,6 +91,28 @@ int main() {
 		"project profile should round-trip");
 	std::filesystem::remove(path);
 
+	machine.configure(console::pocketProfile(), error);
+	machine.writeByte(console::STORAGE_BANK_REGISTER, 1);
+	machine.writeByte(0xE000, 0x5A);
+	const auto storagePath = std::filesystem::temp_directory_path() / "cpu-asm-console-storage.sav";
+	ok &= expect(machine.saveStorageFile(storagePath.string(), error), "persistent storage should save");
+	console::ConsoleMachine storageMachine(console::pocketProfile());
+	ok &= expect(storageMachine.loadStorageFile(storagePath.string(), error), "persistent storage should load");
+	storageMachine.writeByte(console::STORAGE_BANK_REGISTER, 1);
+	ok &= expect(storageMachine.readByte(0xE000) == 0x5A, "storage bank data should round-trip");
+	std::filesystem::remove(storagePath);
+
+	const auto ppmPath = std::filesystem::temp_directory_path() / "cpu-asm-console-asset.ppm";
+	{
+		std::ofstream ppm(ppmPath);
+		ppm << "P3\n2 1\n255\n255 0 0 0 0 255\n";
+	}
+	console::ImportedImage imported;
+	ok &= expect(console::importPpmRgb332(ppmPath.string(), imported, error), "PPM asset should import");
+	ok &= expect(imported.width == 2 && imported.rgb332.size() == 2 && imported.rgb332[0] == 0xE0,
+		"asset should convert to RGB332");
+	std::filesystem::remove(ppmPath);
+
 	const auto build = console::buildAssemblySource("start:\n    movi r0, 72\n    out r0\n    hlt\n");
 	ok &= expect(build.success && !build.rom.empty(), "assembly source should build for the console core");
 	console::ConsoleMachine assembledMachine(console::pocketProfile());
@@ -96,6 +120,21 @@ int main() {
 	assembledMachine.run();
 	assembledMachine.runForCycles(100);
 	ok &= expect(assembledMachine.output().find('H') != std::string::npos, "assembled program should execute");
+
+	const auto audioBuild = console::buildAssemblySource(
+		"start:\n"
+		"    movi r0, 0\n    stbi r0, 0xFF40\n"
+		"    movi r0, 1\n    stbi r0, 0xFF41\n"
+		"    movi r0, 0xB8\n    stbi r0, 0xFF42\n"
+		"    movi r0, 1\n    stbi r0, 0xFF43\n"
+		"    movi r0, 255\n    stbi r0, 0xFF44\n"
+		"loop:\n    jmp loop\n");
+	console::ConsoleMachine audioMachine(console::pocketProfile());
+	ok &= expect(audioBuild.success && audioMachine.loadRom(audioBuild.rom, audioBuild.entryPoint, error),
+		"audio test program should load");
+	audioMachine.run();
+	audioMachine.runForCycles(20'000);
+	ok &= expect(!audioMachine.drainAudioSamples().empty(), "enabled channel should generate deterministic samples");
 
 	if (ok) std::cout << "All console core tests passed.\n";
 	return ok ? 0 : 1;

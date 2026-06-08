@@ -4,11 +4,11 @@ This document defines the hardware contract used by the `ai-console-experiment` 
 
 ## Profiles
 
-| Profile | CPU | Display | RAM | ROM | VRAM | Sprites | Audio |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Pocket Color | 4 MHz | 160x144 | 256 KiB | 1 MiB | 64 KiB | 40, 10/scanline | 4 planned channels |
-| Home 16 | 8 MHz | 320x240 | 1 MiB | 4 MiB | 256 KiB | 128, 32/scanline | 8 planned channels |
-| Studio | 1 Hz-1 GHz | 64x64-3840x2160 | 64 KiB-256 MiB | 64 KiB-512 MiB | framebuffer-256 MiB | configurable | configurable |
+| Profile | CPU | Display | RAM | ROM | VRAM | Storage | Sprites | Audio |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Pocket Color | 4 MHz | 160x144 | 256 KiB | 1 MiB | 64 KiB | 64 KiB | 40, 10/scanline | 4 square-wave channels |
+| Home 16 | 8 MHz | 320x240 | 1 MiB | 4 MiB | 256 KiB | 1 MiB | 128, 32/scanline | 8 square-wave channels |
+| Studio | 1 Hz-1 GHz | 64x64-3840x2160 | 64 KiB-256 MiB | 64 KiB-512 MiB | framebuffer-256 MiB | 0-256 MiB | configurable | configurable |
 
 All profiles execute the same instruction set. Projects select a profile at runtime and may be tested under another profile without rebuilding.
 
@@ -19,7 +19,7 @@ All profiles execute the same instruction set. Projects select a profile at runt
 | `0000-7FFF` | Fixed RAM |
 | `8000-BFFF` | 16 KiB banked RAM window |
 | `C000-DFFF` | 8 KiB banked VRAM window |
-| `E000-FEFF` | Fixed RAM |
+| `E000-FEFF` | 7936-byte banked persistent-storage window |
 | `FF00-FFFF` | Device registers |
 
 Instruction ROM is Harvard-style. `0000-7FFF` is fixed and `8000-FFFF` is a switchable 32 KiB ROM bank.
@@ -31,6 +31,7 @@ Instruction ROM is Harvard-style. `0000-7FFF` is fixed and `8000-FFFF` is a swit
 | `FF00` | RAM bank | Select the RAM window bank |
 | `FF01` | VRAM bank | Select the VRAM window bank |
 | `FF02` | ROM bank | Select the upper instruction-ROM bank |
+| `FF03` | Storage bank | Select the persistent-storage window bank |
 | `FF10` | PPU control | Bit 0 enables display output |
 | `FF11` | PPU status | Bit 0 is set at the frame boundary |
 | `FF12` | PPU present | Any write immediately refreshes the host display |
@@ -39,10 +40,18 @@ Instruction ROM is Harvard-style. `0000-7FFF` is fixed and `8000-FFFF` is a swit
 | `FF21` | Input data | Read current input; write to consume it |
 | `FF30` | Profile ID | `0` Pocket, `1` Home, `2` Studio |
 | `FF31` | Fault code | Current deterministic hardware fault |
+| `FF40` | Audio channel | Selected audio channel index |
+| `FF41` | Audio control | Bit 0 enables the selected square-wave channel |
+| `FF42-FF43` | Audio frequency | Little-endian frequency in Hz |
+| `FF44` | Audio volume | Channel volume from 0 to 255 |
 
 PPU control bit 1 selects tile mode. Framebuffer mode uses one RGB332 byte per pixel at the start of VRAM. Tile mode uses 256 8x8 RGB332 tiles at `VRAM 0000-3FFF` and a tile map at `VRAM 4000`. Sprite descriptors begin at `VRAM 5000` and contain little-endian X, little-endian Y, RGB332 color, and square size. Pocket Color quantizes output to 32 colors; every profile enforces total and per-scanline sprite limits.
 
 The assembly convenience library writes the same registers and VRAM used by direct hardware access.
+
+## Assets And Storage
+
+`CPU-ASM-ASSET input.ppm output.rgb332` converts P3/P6 PPM images to one-byte RGB332 pixels. The desktop environment can import the same files directly into VRAM. Persistent storage is saved as a raw profile-sized image and accessed through the banked `E000-FEFF` window.
 
 ## Timing
 

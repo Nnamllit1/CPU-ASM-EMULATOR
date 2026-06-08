@@ -15,6 +15,7 @@ namespace console {
 inline constexpr uint16_t RAM_BANK_REGISTER = 0xFF00;
 inline constexpr uint16_t VRAM_BANK_REGISTER = 0xFF01;
 inline constexpr uint16_t ROM_BANK_REGISTER = 0xFF02;
+inline constexpr uint16_t STORAGE_BANK_REGISTER = 0xFF03;
 inline constexpr uint16_t PPU_CONTROL_REGISTER = 0xFF10;
 inline constexpr uint16_t PPU_STATUS_REGISTER = 0xFF11;
 inline constexpr uint16_t PPU_PRESENT_REGISTER = 0xFF12;
@@ -24,6 +25,11 @@ inline constexpr uint16_t INPUT_STATUS_REGISTER = 0xFF20;
 inline constexpr uint16_t INPUT_DATA_REGISTER = 0xFF21;
 inline constexpr uint16_t PROFILE_ID_REGISTER = 0xFF30;
 inline constexpr uint16_t FAULT_CODE_REGISTER = 0xFF31;
+inline constexpr uint16_t AUDIO_CHANNEL_REGISTER = 0xFF40;
+inline constexpr uint16_t AUDIO_CONTROL_REGISTER = 0xFF41;
+inline constexpr uint16_t AUDIO_FREQUENCY_LOW_REGISTER = 0xFF42;
+inline constexpr uint16_t AUDIO_FREQUENCY_HIGH_REGISTER = 0xFF43;
+inline constexpr uint16_t AUDIO_VOLUME_REGISTER = 0xFF44;
 
 enum class MachineState {
 	Ready,
@@ -64,6 +70,10 @@ public:
 	uint64_t peekInstruction(uint16_t address) const { return fetchInstruction(address); }
 
 	void queueInput(uint16_t value);
+	bool loadStorageFile(const std::string& path, std::string& error);
+	bool saveStorageFile(const std::string& path, std::string& error) const;
+	bool loadVram(const std::vector<uint8_t>& bytes, size_t offset, std::string& error);
+	std::vector<float> drainAudioSamples();
 	uint8_t readByte(uint16_t address) const;
 	void writeByte(uint16_t address, uint8_t value);
 	uint16_t readWord(uint16_t address) const;
@@ -84,9 +94,11 @@ public:
 	uint8_t ramBank() const { return ramBank_; }
 	uint8_t vramBank() const { return vramBank_; }
 	uint8_t romBank() const { return romBank_; }
+	uint8_t storageBank() const { return storageBank_; }
 	const std::vector<uint8_t>& ram() const { return ram_; }
 	const std::vector<uint8_t>& vram() const { return vram_; }
 	const std::vector<uint8_t>& rom() const { return rom_; }
+	const std::vector<uint8_t>& storage() const { return storage_; }
 	const std::vector<uint32_t>& framebuffer() const { return framebuffer_; }
 	const std::string& output() const { return output_; }
 	void clearOutput() { output_.clear(); }
@@ -100,6 +112,15 @@ private:
 	void fault(FaultCode code, std::string message);
 	size_t mappedRamIndex(uint16_t address) const;
 	size_t mappedVramIndex(uint16_t address) const;
+	size_t mappedStorageIndex(uint16_t address) const;
+	void generateAudio(uint32_t consumedCycles);
+
+	struct AudioChannel {
+		bool enabled = false;
+		uint16_t frequency = 440;
+		uint8_t volume = 0;
+		double phase = 0.0;
+	};
 
 	HardwareProfile profile_;
 	MachineState state_ = MachineState::Ready;
@@ -115,12 +136,18 @@ private:
 	uint8_t ramBank_ = 0;
 	uint8_t vramBank_ = 0;
 	uint8_t romBank_ = 0;
+	uint8_t storageBank_ = 0;
 	uint8_t ppuControl_ = 1;
 	uint16_t spriteCount_ = 0;
 	std::vector<uint8_t> ram_;
 	std::vector<uint8_t> vram_;
 	std::vector<uint8_t> rom_;
+	std::vector<uint8_t> storage_;
 	std::vector<uint32_t> framebuffer_;
+	std::vector<AudioChannel> audioChannels_;
+	std::vector<float> audioSamples_;
+	uint8_t selectedAudioChannel_ = 0;
+	uint64_t audioCycleAccumulator_ = 0;
 	std::deque<uint16_t> inputQueue_;
 	std::set<uint16_t> breakpoints_;
 	std::string output_;

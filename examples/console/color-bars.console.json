@@ -1,6 +1,8 @@
 {
   "name": "RGB332 Color Bars",
   "source": "examples/console/color-bars.asm",
+  "storage": "console-storage.sav",
+  "asset": "examples/console/checker.ppm",
   "profile": "pocket",
   "studio": {
     "clockHz": 100000000,
@@ -9,6 +11,7 @@
     "ramBytes": 16777216,
     "romBytes": 33554432,
     "vramBytes": 16777216,
+    "storageBytes": 33554432,
     "maxSprites": 4096,
     "spritesPerScanline": 1024,
     "paletteColors": 256,

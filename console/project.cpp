@@ -50,6 +50,8 @@ bool loadProject(const std::string& path, ConsoleProject& project, std::string& 
 
 	stringValue(json, "name", project.name);
 	stringValue(json, "source", project.sourcePath);
+	stringValue(json, "storage", project.storagePath);
+	stringValue(json, "asset", project.assetPath);
 	std::string profileName;
 	if (stringValue(json, "profile", profileName)) {
 		if (profileName == "home") project.profile = ProfileId::Home;
@@ -64,6 +66,7 @@ bool loadProject(const std::string& path, ConsoleProject& project, std::string& 
 	if (integerValue(json, "ramBytes", value)) project.studio.ramBytes = static_cast<size_t>(value);
 	if (integerValue(json, "romBytes", value)) project.studio.romBytes = static_cast<size_t>(value);
 	if (integerValue(json, "vramBytes", value)) project.studio.vramBytes = static_cast<size_t>(value);
+	if (integerValue(json, "storageBytes", value)) project.studio.storageBytes = static_cast<size_t>(value);
 	if (integerValue(json, "maxSprites", value)) project.studio.maxSprites = static_cast<uint32_t>(value);
 	if (integerValue(json, "spritesPerScanline", value)) project.studio.spritesPerScanline = static_cast<uint32_t>(value);
 	if (integerValue(json, "paletteColors", value)) project.studio.paletteColors = static_cast<uint32_t>(value);
@@ -87,6 +90,8 @@ bool saveProject(const std::string& path, const ConsoleProject& project, std::st
 	output << "{\n"
 		<< "  \"name\": \"" << escapeJson(project.name) << "\",\n"
 		<< "  \"source\": \"" << escapeJson(project.sourcePath) << "\",\n"
+		<< "  \"storage\": \"" << escapeJson(project.storagePath) << "\",\n"
+		<< "  \"asset\": \"" << escapeJson(project.assetPath) << "\",\n"
 		<< "  \"profile\": \"" << profileName << "\",\n"
 		<< "  \"studio\": {\n"
 		<< "    \"clockHz\": " << project.studio.clockHz << ",\n"
@@ -95,6 +100,7 @@ bool saveProject(const std::string& path, const ConsoleProject& project, std::st
 		<< "    \"ramBytes\": " << project.studio.ramBytes << ",\n"
 		<< "    \"romBytes\": " << project.studio.romBytes << ",\n"
 		<< "    \"vramBytes\": " << project.studio.vramBytes << ",\n"
+		<< "    \"storageBytes\": " << project.studio.storageBytes << ",\n"
 		<< "    \"maxSprites\": " << project.studio.maxSprites << ",\n"
 		<< "    \"spritesPerScanline\": " << project.studio.spritesPerScanline << ",\n"
 		<< "    \"paletteColors\": " << project.studio.paletteColors << ",\n"

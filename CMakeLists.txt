@@ -7,6 +7,7 @@ include(CTest)
 option(CPU_ASM_BUILD_DESKTOP "Build the SDL3/ImGui console development environment" OFF)
 
 add_library(console-core
+    console/asset_import.cpp
     console/console_machine.cpp
     console/disassembler.cpp
     console/hardware_profile.cpp
@@ -14,6 +15,10 @@ add_library(console-core
 )
 target_include_directories(console-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(console-core PUBLIC cxx_std_20)
+
+add_executable(CPU-ASM-ASSET tools/asset_packer.cpp)
+target_link_libraries(CPU-ASM-ASSET PRIVATE console-core)
+target_compile_features(CPU-ASM-ASSET PRIVATE cxx_std_20)
 
 add_library(experimental-assembler
     console/source_builder.cpp

@@ -1,4 +1,5 @@
 #include "../console/console_machine.h"
+#include "../console/asset_import.h"
 #include "../console/disassembler.h"
 #include "../console/project.h"
 #include "../console/source_builder.h"
@@ -107,6 +108,12 @@ int main(int, char**) {
 	ImGui::StyleColorsDark();
 	ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
 	ImGui_ImplSDLRenderer3_Init(renderer);
+	SDL_AudioSpec audioSpec{};
+	audioSpec.format = SDL_AUDIO_F32;
+	audioSpec.channels = 1;
+	audioSpec.freq = 48'000;
+	SDL_AudioStream* audioStream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &audioSpec, nullptr, nullptr);
+	if (audioStream) SDL_ResumeAudioStreamDevice(audioStream);
 
 	console::ConsoleProject project;
 	console::ConsoleMachine machine(console::pocketProfile());
@@ -114,8 +121,12 @@ int main(int, char**) {
 	std::strncpy(sourceBuffer.data(), defaultSource, sourceBuffer.size() - 1);
 	std::array<char, 512> sourcePath{};
 	std::array<char, 512> projectPath{};
+	std::array<char, 512> assetPath{};
+	std::array<char, 512> storagePath{};
 	std::strncpy(sourcePath.data(), "examples/console/color-bars.asm", sourcePath.size() - 1);
 	std::strncpy(projectPath.data(), "examples/console/color-bars.console.json", projectPath.size() - 1);
+	std::strncpy(assetPath.data(), "examples/console/checker.ppm", assetPath.size() - 1);
+	std::strncpy(storagePath.data(), "console-storage.sav", storagePath.size() - 1);
 	std::string diagnostics = "Select Build to assemble and load the program.\n";
 	int selectedProfile = 0;
 	int breakpointAddress = 0;
@@ -155,6 +166,10 @@ int main(int, char**) {
 			machine.runForCycles(executionBudget);
 			cycleAccumulator -= static_cast<double>(executionBudget);
 			cycleAccumulator = std::min(cycleAccumulator, 400'000.0);
+		}
+		if (audioStream) {
+			std::vector<float> samples = machine.drainAudioSamples();
+			if (!samples.empty()) SDL_PutAudioStreamData(audioStream, samples.data(), static_cast<int>(samples.size() * sizeof(float)));
 		}
 
 		const auto& profile = machine.profile();
@@ -241,9 +256,11 @@ int main(int, char**) {
 				int ramMiB = static_cast<int>(project.studio.ramBytes / (1024 * 1024));
 				int romMiB = static_cast<int>(project.studio.romBytes / (1024 * 1024));
 				int vramMiB = static_cast<int>(project.studio.vramBytes / (1024 * 1024));
+				int storageMiB = static_cast<int>(project.studio.storageBytes / (1024 * 1024));
 				if (ImGui::SliderInt("RAM MiB", &ramMiB, 1, 256)) project.studio.ramBytes = static_cast<size_t>(ramMiB) * 1024 * 1024;
 				if (ImGui::SliderInt("ROM MiB", &romMiB, 1, 512)) project.studio.romBytes = static_cast<size_t>(romMiB) * 1024 * 1024;
 				if (ImGui::SliderInt("VRAM MiB", &vramMiB, 1, 256)) project.studio.vramBytes = static_cast<size_t>(vramMiB) * 1024 * 1024;
+				if (ImGui::SliderInt("Storage MiB", &storageMiB, 0, 256)) project.studio.storageBytes = static_cast<size_t>(storageMiB) * 1024 * 1024;
 				int sprites = static_cast<int>(project.studio.maxSprites);
 				int scanlineSprites = static_cast<int>(project.studio.spritesPerScanline);
 				int paletteColors = static_cast<int>(project.studio.paletteColors);
@@ -260,6 +277,8 @@ int main(int, char**) {
 				if (console::loadProject(projectPath.data(), project, error)) {
 					selectedProfile = static_cast<int>(project.profile);
 					std::strncpy(sourcePath.data(), project.sourcePath.c_str(), sourcePath.size() - 1);
+					std::strncpy(storagePath.data(), project.storagePath.c_str(), storagePath.size() - 1);
+					std::strncpy(assetPath.data(), project.assetPath.c_str(), assetPath.size() - 1);
 					configureMachine();
 					diagnostics = "Project loaded.\n";
 				} else diagnostics = error + "\n";
@@ -267,8 +286,36 @@ int main(int, char**) {
 			ImGui::SameLine();
 			if (ImGui::Button("Save Project")) {
 				project.sourcePath = sourcePath.data();
+				project.storagePath = storagePath.data();
+				project.assetPath = assetPath.data();
 				std::string error;
 				diagnostics = console::saveProject(projectPath.data(), project, error) ? "Project saved.\n" : error + "\n";
+			}
+			ImGui::SeparatorText("Persistent Storage");
+			ImGui::InputText("Storage file", storagePath.data(), storagePath.size());
+			if (ImGui::Button("Load Storage")) {
+				std::string error;
+				diagnostics = machine.loadStorageFile(storagePath.data(), error) ? "Storage loaded.\n" : error + "\n";
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Save Storage")) {
+				std::string error;
+				diagnostics = machine.saveStorageFile(storagePath.data(), error) ? "Storage saved.\n" : error + "\n";
+			}
+			ImGui::SeparatorText("Asset Import");
+			ImGui::InputText("PPM image", assetPath.data(), assetPath.size());
+			if (ImGui::Button("Import to VRAM")) {
+				console::ImportedImage image;
+				std::string error;
+				if (console::importPpmRgb332(assetPath.data(), image, error) && machine.loadVram(image.rgb332, 0, error)) {
+					diagnostics = "Imported " + std::to_string(image.width) + "x" + std::to_string(image.height) + " RGB332 image.\n";
+				} else diagnostics = error + "\n";
+			}
+			if (ImGui::CollapsingHeader("Hardware Reference")) {
+				ImGui::TextWrapped("RAM bank FF00, VRAM bank FF01, ROM bank FF02, storage bank FF03. "
+					"PPU control FF10, present FF12, sprite count FF13-FF14. "
+					"Input FF20-FF21. Audio channel FF40, enable FF41, frequency FF42-FF43, volume FF44. "
+					"Framebuffer pixels are RGB332 bytes at the start of VRAM; PPU control bit 1 selects 8x8 tile mode.");
 			}
 
 			ImGui::TableNextColumn();
@@ -276,7 +323,7 @@ int main(int, char**) {
 			ImGui::Text("PC: %04X  SP: %04X", machine.pc(), machine.sp());
 			ImGui::Text("Cycles: %llu", static_cast<unsigned long long>(machine.cycles()));
 			ImGui::Text("Frames: %llu", static_cast<unsigned long long>(machine.frames()));
-			ImGui::Text("Banks R:%u V:%u ROM:%u", machine.ramBank(), machine.vramBank(), machine.romBank());
+			ImGui::Text("Banks R:%u V:%u ROM:%u S:%u", machine.ramBank(), machine.vramBank(), machine.romBank(), machine.storageBank());
 			ImGui::Text("Limits: %u sprites, %u/scanline, %u colors, %u audio channels",
 				profile.maxSprites, profile.spritesPerScanline, profile.paletteColors, profile.audioChannels);
 			if (machine.state() == console::MachineState::Faulted) {
@@ -340,6 +387,7 @@ int main(int, char**) {
 	}
 
 	if (displayTexture) SDL_DestroyTexture(displayTexture);
+	if (audioStream) SDL_DestroyAudioStream(audioStream);
 	ImGui_ImplSDLRenderer3_Shutdown();
 	ImGui_ImplSDL3_Shutdown();
 	ImGui::DestroyContext();

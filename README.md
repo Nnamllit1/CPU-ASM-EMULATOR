@@ -8,6 +8,8 @@ This is a project that may actually be actively be worked on by me for longer th
 
 The experimental branch adds an original color fantasy-console environment with deterministic hardware profiles, banked memory, a debugger, and a desktop editor. See [the architecture specification](docs/experimental-architecture.md).
 
+It also includes persistent banked storage, deterministic square-wave audio, P3/P6 PPM image import, and the `CPU-ASM-ASSET` command-line RGB332 asset packer.
+
 ## Building
 
 ### Windows

@@ -365,14 +365,14 @@ jobs:
         shell: bash
         run: |
           set +e
-          SDL_VIDEODRIVER=dummy timeout 3 ./build-console/CPU-ASM-CONSOLE
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy timeout 3 ./build-console/CPU-ASM-CONSOLE
           status=$?
           test "$status" -eq 124
 
       - name: Package
         run: |
           mkdir -p dist/CPU-ASM-CONSOLE-linux-x64
-          cp build-console/CPU-ASM-CONSOLE build-console/CPU-ASM-EMULATOR dist/CPU-ASM-CONSOLE-linux-x64/
+          cp build-console/CPU-ASM-CONSOLE build-console/CPU-ASM-EMULATOR build-console/CPU-ASM-ASSET dist/CPU-ASM-CONSOLE-linux-x64/
           cp -r docs examples dist/CPU-ASM-CONSOLE-linux-x64/
           tar -C dist -czf dist/CPU-ASM-CONSOLE-ai-linux-x64.tar.gz CPU-ASM-CONSOLE-linux-x64
 
@@ -404,7 +404,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist\CPU-ASM-CONSOLE-windows-x64 | Out-Null
-          Copy-Item build-console\Release\CPU-ASM-CONSOLE.exe, build-console\Release\CPU-ASM-EMULATOR.exe dist\CPU-ASM-CONSOLE-windows-x64\
+          Copy-Item build-console\Release\CPU-ASM-CONSOLE.exe, build-console\Release\CPU-ASM-EMULATOR.exe, build-console\Release\CPU-ASM-ASSET.exe dist\CPU-ASM-CONSOLE-windows-x64\
           Copy-Item docs, examples -Destination dist\CPU-ASM-CONSOLE-windows-x64\ -Recurse
           Compress-Archive -Path dist\CPU-ASM-CONSOLE-windows-x64 -DestinationPath dist\CPU-ASM-CONSOLE-ai-windows-x64.zip
 
