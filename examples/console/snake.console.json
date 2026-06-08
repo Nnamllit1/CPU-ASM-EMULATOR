@@ -1,0 +1,20 @@
+{
+  "name": "Pocket Snake",
+  "source": "examples/console/snake.asm",
+  "storage": "console-storage.sav",
+  "asset": "",
+  "profile": "pocket",
+  "studio": {
+    "clockHz": 100000000,
+    "displayWidth": 640,
+    "displayHeight": 360,
+    "ramBytes": 16777216,
+    "romBytes": 33554432,
+    "vramBytes": 16777216,
+    "storageBytes": 33554432,
+    "maxSprites": 4096,
+    "spritesPerScanline": 1024,
+    "paletteColors": 256,
+    "audioChannels": 32
+  }
+}

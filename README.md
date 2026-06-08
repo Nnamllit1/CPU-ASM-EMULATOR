@@ -10,6 +10,8 @@ The experimental branch adds an original color fantasy-console environment with 
 
 It also includes persistent banked storage, deterministic square-wave audio, P3/P6 PPM image import, and the `CPU-ASM-ASSET` command-line RGB332 asset packer.
 
+The default desktop project is `Pocket Snake`, a complete tile-and-sprite game targeting the low-end Pocket Color hardware profile. It uses held D-pad input and deterministic frame timing rather than host-speed delays.
+
 ## Building
 
 ### Windows

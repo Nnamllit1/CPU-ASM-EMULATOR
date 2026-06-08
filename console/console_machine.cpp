@@ -222,6 +222,11 @@ size_t ConsoleMachine::mappedStorageIndex(uint16_t address) const {
 }
 
 uint8_t ConsoleMachine::readByte(uint16_t address) const {
+	const uint64_t wholeSeconds = cycles_ / profile_.clockHz;
+	const uint64_t remainingCycles = cycles_ % profile_.clockHz;
+	const uint16_t milliseconds = static_cast<uint16_t>((wholeSeconds * 1000 + remainingCycles * 1000 / profile_.clockHz) & 0xFFFF);
+	const uint16_t frameCounter = static_cast<uint16_t>(frames_ & 0xFFFF);
+	const uint16_t cycleCounter = static_cast<uint16_t>(cycles_ & 0xFFFF);
 	if (address >= VramStart && address <= VramEnd) {
 		return vram_[mappedVramIndex(address)];
 	}
@@ -253,6 +258,12 @@ uint8_t ConsoleMachine::readByte(uint16_t address) const {
 			return audioChannels_.empty() ? 0 : static_cast<uint8_t>((audioChannels_[selectedAudioChannel_ % audioChannels_.size()].frequency >> 8) & 0xFF);
 		case AUDIO_VOLUME_REGISTER:
 			return audioChannels_.empty() ? 0 : audioChannels_[selectedAudioChannel_ % audioChannels_.size()].volume;
+		case TIMER_MILLISECONDS_HIGH_REGISTER: return static_cast<uint8_t>((milliseconds >> 8) & 0xFF);
+		case TIMER_MILLISECONDS_LOW_REGISTER: return static_cast<uint8_t>(milliseconds & 0xFF);
+		case TIMER_FRAMES_HIGH_REGISTER: return static_cast<uint8_t>((frameCounter >> 8) & 0xFF);
+		case TIMER_FRAMES_LOW_REGISTER: return static_cast<uint8_t>(frameCounter & 0xFF);
+		case TIMER_CYCLES_HIGH_REGISTER: return static_cast<uint8_t>((cycleCounter >> 8) & 0xFF);
+		case TIMER_CYCLES_LOW_REGISTER: return static_cast<uint8_t>(cycleCounter & 0xFF);
 		default: return 0;
 		}
 	}

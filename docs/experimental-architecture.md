@@ -45,6 +45,9 @@ Instruction ROM is Harvard-style. `0000-7FFF` is fixed and `8000-FFFF` is a swit
 | `FF41` | Audio control | Bit 0 enables the selected square-wave channel |
 | `FF42-FF43` | Audio frequency | Little-endian frequency in Hz |
 | `FF44` | Audio volume | Channel volume from 0 to 255 |
+| `FF50-FF51` | Millisecond timer | Big-endian low 16 bits of deterministic elapsed emulated milliseconds |
+| `FF52-FF53` | Frame timer | Big-endian low 16 bits of completed display frames |
+| `FF54-FF55` | Cycle timer | Big-endian low 16 bits of executed CPU cycles |
 
 PPU control bit 1 selects tile mode. Framebuffer mode uses one RGB332 byte per pixel at the start of VRAM. Tile mode uses 256 8x8 RGB332 tiles at `VRAM 0000-3FFF` and a tile map at `VRAM 4000`. Sprite descriptors begin at `VRAM 5000` and contain little-endian X, little-endian Y, RGB332 color, and square size. Pocket Color quantizes output to 32 colors; every profile enforces total and per-scanline sprite limits.
 
@@ -63,3 +66,5 @@ Keyboard, SDL gamepad, and on-screen controls feed the same eight logical consol
 ## Timing
 
 Execution is deterministic. ALU instructions cost one cycle, taken branches cost two, memory operations cost two, stack/call operations cost three, and device I/O costs four. Frame boundaries derive from profile clock speed and frame rate, not host speed.
+
+Assembly can read the 16-bit timing registers directly with `ldi`, or use `%millis`, `%frames`, and `%cycles` from the default include library. Timer subtraction is wrap-safe for intervals shorter than 65536 units.

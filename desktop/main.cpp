@@ -343,10 +343,15 @@ int main(int, char**) {
 	std::array<char, PathCapacity> projectPath{};
 	std::array<char, PathCapacity> assetPath{};
 	std::array<char, PathCapacity> storagePath{};
-	std::strncpy(sourcePath.data(), "examples/console/color-bars.asm", sourcePath.size() - 1);
-	std::strncpy(projectPath.data(), "examples/console/color-bars.console.json", projectPath.size() - 1);
+	std::strncpy(sourcePath.data(), "examples/console/snake.asm", sourcePath.size() - 1);
+	std::strncpy(projectPath.data(), "examples/console/snake.console.json", projectPath.size() - 1);
 	std::strncpy(assetPath.data(), "examples/console/checker.ppm", assetPath.size() - 1);
 	std::strncpy(storagePath.data(), "console-storage.sav", storagePath.size() - 1);
+	std::string initialSource;
+	if (!readTextFile(sourcePath.data(), initialSource)) {
+		readTextFile(std::string(CPU_ASM_SOURCE_DIR) + "/examples/console/snake.asm", initialSource);
+	}
+	if (!initialSource.empty()) editor.SetText(initialSource);
 
 	std::string diagnostics = "Run assembles the current source, loads a fresh ROM, and starts it.\n";
 	console::SourceBuildResult currentBuild;
@@ -855,12 +860,15 @@ int main(int, char**) {
 			if (ImGui::BeginTabItem("ROM")) { renderHexBuffer("rom-view", machine.rom(), romAddress); ImGui::EndTabItem(); }
 			if (ImGui::BeginTabItem("Storage")) { renderHexBuffer("storage-view", machine.storage(), storageAddress); ImGui::EndTabItem(); }
 			if (ImGui::BeginTabItem("Devices")) {
-				const std::array<std::pair<uint16_t, const char*>, 19> devices = {{
+				const std::array<std::pair<uint16_t, const char*>, 25> devices = {{
 					{0xFF00, "RAM bank"}, {0xFF01, "VRAM bank"}, {0xFF02, "ROM bank"}, {0xFF03, "Storage bank"},
 					{0xFF10, "PPU control"}, {0xFF11, "PPU status"}, {0xFF13, "Sprite count low"}, {0xFF14, "Sprite count high"},
 					{0xFF20, "Input queued"}, {0xFF21, "Input data"}, {0xFF22, "Buttons low"}, {0xFF23, "Buttons high"},
 					{0xFF30, "Profile"}, {0xFF31, "Fault"}, {0xFF40, "Audio channel"}, {0xFF41, "Audio control"},
-					{0xFF42, "Frequency low"}, {0xFF43, "Frequency high"}, {0xFF44, "Volume"}
+					{0xFF42, "Frequency low"}, {0xFF43, "Frequency high"}, {0xFF44, "Volume"},
+					{0xFF50, "Milliseconds high"}, {0xFF51, "Milliseconds low"},
+					{0xFF52, "Frames high"}, {0xFF53, "Frames low"},
+					{0xFF54, "Cycles high"}, {0xFF55, "Cycles low"}
 				}};
 				if (ImGui::BeginTable("devices", 3, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
 					ImGui::TableSetupColumn("Address"); ImGui::TableSetupColumn("Register"); ImGui::TableSetupColumn("Value");

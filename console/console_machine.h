@@ -32,6 +32,12 @@ inline constexpr uint16_t AUDIO_CONTROL_REGISTER = 0xFF41;
 inline constexpr uint16_t AUDIO_FREQUENCY_LOW_REGISTER = 0xFF42;
 inline constexpr uint16_t AUDIO_FREQUENCY_HIGH_REGISTER = 0xFF43;
 inline constexpr uint16_t AUDIO_VOLUME_REGISTER = 0xFF44;
+inline constexpr uint16_t TIMER_MILLISECONDS_HIGH_REGISTER = 0xFF50;
+inline constexpr uint16_t TIMER_MILLISECONDS_LOW_REGISTER = 0xFF51;
+inline constexpr uint16_t TIMER_FRAMES_HIGH_REGISTER = 0xFF52;
+inline constexpr uint16_t TIMER_FRAMES_LOW_REGISTER = 0xFF53;
+inline constexpr uint16_t TIMER_CYCLES_HIGH_REGISTER = 0xFF54;
+inline constexpr uint16_t TIMER_CYCLES_LOW_REGISTER = 0xFF55;
 
 enum class MachineState {
 	Ready,

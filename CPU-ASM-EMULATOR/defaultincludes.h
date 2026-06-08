@@ -98,4 +98,17 @@ inline constexpr const char* DEFAULT_INCLUDES_ASM = R"asm(
     movi {reg}, 0
     stbi {reg}, 0xFF41
 %endmacro
+
+; Deterministic 16-bit hardware timers. Values wrap naturally at 65535.
+%macro millis reg
+    ldi {reg}, 0xFF50
+%endmacro
+
+%macro frames reg
+    ldi {reg}, 0xFF52
+%endmacro
+
+%macro cycles reg
+    ldi {reg}, 0xFF54
+%endmacro
 )asm";

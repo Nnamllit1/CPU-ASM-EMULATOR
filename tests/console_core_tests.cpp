@@ -166,6 +166,30 @@ int main() {
 	audioMachine.runForCycles(20'000);
 	ok &= expect(!audioMachine.drainAudioSamples().empty(), "enabled channel should generate deterministic samples");
 
+	std::ifstream snakeSource(std::filesystem::path(CPU_ASM_SOURCE_DIR) / "examples/console/snake.asm");
+	std::ostringstream snakeBuffer;
+	snakeBuffer << snakeSource.rdbuf();
+	const auto snakeBuild = console::buildAssemblySource(snakeBuffer.str());
+	console::ConsoleMachine snakeMachine(console::pocketProfile());
+	ok &= expect(snakeSource.good() || snakeSource.eof(), "Pocket Snake source should be readable");
+	ok &= expect(snakeBuild.success && snakeMachine.loadRom(snakeBuild.rom, snakeBuild.entryPoint, error),
+		"Pocket Snake should assemble and load on the default Pocket Color profile");
+	snakeMachine.run();
+	snakeMachine.runForCycles(1'000'000);
+	ok &= expect(snakeMachine.state() != console::MachineState::Faulted,
+		"Pocket Snake should run without exceeding low-end hardware limits");
+	ok &= expect(snakeMachine.readByte(console::PPU_CONTROL_REGISTER) == 3,
+		"Pocket Snake should use the low-cost tile renderer");
+	ok &= expect(snakeMachine.readByte(console::PPU_SPRITE_COUNT_REGISTER) >= 5 &&
+		snakeMachine.readByte(console::PPU_SPRITE_COUNT_REGISTER) <= 25,
+		"Pocket Snake should render within the Pocket Color sprite budget");
+	ok &= expect(snakeMachine.readWord(console::TIMER_FRAMES_HIGH_REGISTER) ==
+		static_cast<uint16_t>(snakeMachine.frames()),
+		"frame timing MMIO should track completed Pocket Color frames");
+	ok &= expect(snakeMachine.readWord(console::TIMER_CYCLES_HIGH_REGISTER) ==
+		static_cast<uint16_t>(snakeMachine.cycles()),
+		"cycle timing MMIO should expose deterministic execution time");
+
 	if (ok) std::cout << "All console core tests passed.\n";
 	return ok ? 0 : 1;
 }
