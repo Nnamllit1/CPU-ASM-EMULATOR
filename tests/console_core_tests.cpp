@@ -64,6 +64,16 @@ int main() {
 	machine.run();
 	ok &= expect(machine.runForCycles(100) == 0, "breakpoint should stop before execution");
 	ok &= expect(machine.state() == console::MachineState::Paused, "breakpoint should pause machine");
+	machine.run();
+	ok &= expect(machine.runForCycles(1) == 1 && machine.pc() == 8,
+		"continuing from a breakpoint should execute the stopped instruction once");
+
+	machine.setInputButtons(0x00A5);
+	ok &= expect(machine.readByte(console::INPUT_BUTTONS_LOW_REGISTER) == 0xA5 &&
+		machine.readByte(console::INPUT_BUTTONS_HIGH_REGISTER) == 0,
+		"held console buttons should be exposed through MMIO");
+	machine.reset();
+	ok &= expect(machine.inputButtons() == 0, "reset should release held console buttons");
 
 	machine.reset();
 	machine.writeByte(console::PPU_SPRITE_COUNT_REGISTER, 41);
@@ -83,12 +93,26 @@ int main() {
 	project.name = "Round trip";
 	project.profile = console::ProfileId::Studio;
 	project.studio.clockHz = 1;
+	project.input.keyboard[static_cast<size_t>(console::ConsoleButton::A)] = 'k';
+	project.input.gamepad[static_cast<size_t>(console::ConsoleButton::Start)] = 9;
 	const auto path = std::filesystem::temp_directory_path() / "cpu-asm-console-test.json";
 	ok &= expect(console::saveProject(path.string(), project, error), "project should save");
 	console::ConsoleProject loaded;
 	ok &= expect(console::loadProject(path.string(), loaded, error), "project should load");
 	ok &= expect(loaded.profile == console::ProfileId::Studio && loaded.studio.clockHz == 1,
 		"project profile should round-trip");
+	ok &= expect(loaded.input.keyboard[static_cast<size_t>(console::ConsoleButton::A)] == 'k' &&
+		loaded.input.gamepad[static_cast<size_t>(console::ConsoleButton::Start)] == 9,
+		"project input bindings should round-trip");
+	std::filesystem::remove(path);
+	{
+		std::ofstream legacy(path);
+		legacy << "{\"name\":\"Legacy\",\"source\":\"main.asm\",\"profile\":\"pocket\"}\n";
+	}
+	console::ConsoleProject legacyProject;
+	ok &= expect(console::loadProject(path.string(), legacyProject, error) &&
+		legacyProject.input.keyboard[static_cast<size_t>(console::ConsoleButton::A)] == 'z',
+		"projects without input bindings should retain default controls");
 	std::filesystem::remove(path);
 
 	machine.configure(console::pocketProfile(), error);
@@ -115,6 +139,12 @@ int main() {
 
 	const auto build = console::buildAssemblySource("start:\n    movi r0, 72\n    out r0\n    hlt\n");
 	ok &= expect(build.success && !build.rom.empty(), "assembly source should build for the console core");
+	ok &= expect(build.addressToSourceLine.at(0) == 2 && build.sourceLineToAddress.at(4) == 16,
+		"build debug metadata should map ROM addresses to original source lines");
+	const auto macroBuild = console::buildAssemblySource("start:\n    %newline r0\n    hlt\n");
+	ok &= expect(macroBuild.success && macroBuild.addressToSourceLine.at(0) == 2 &&
+		macroBuild.addressToSourceLine.at(8) == 2 && macroBuild.addressToSourceLine.at(16) == 3,
+		"macro-expanded instructions should map back to the invocation line");
 	console::ConsoleMachine assembledMachine(console::pocketProfile());
 	ok &= expect(assembledMachine.loadRom(build.rom, build.entryPoint, error), "assembled ROM should load");
 	assembledMachine.run();

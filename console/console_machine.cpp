@@ -95,12 +95,15 @@ void ConsoleMachine::reset() {
 	faultCode_ = FaultCode::None;
 	faultMessage_.clear();
 	inputQueue_.clear();
+	inputButtons_ = 0;
+	skipBreakpointOnce_ = false;
 	output_.clear();
 	refreshFramebuffer();
 }
 
 void ConsoleMachine::run() {
 	if (state_ != MachineState::Faulted && state_ != MachineState::Halted) {
+		skipBreakpointOnce_ = state_ == MachineState::Paused && hasBreakpoint(pc_);
 		state_ = MachineState::Running;
 	}
 }
@@ -115,10 +118,11 @@ bool ConsoleMachine::step() {
 	if (state_ == MachineState::Faulted || state_ == MachineState::Halted) {
 		return false;
 	}
-	if (hasBreakpoint(pc_) && state_ == MachineState::Running) {
+	if (hasBreakpoint(pc_) && state_ == MachineState::Running && !skipBreakpointOnce_) {
 		state_ = MachineState::Paused;
 		return false;
 	}
+	skipBreakpointOnce_ = false;
 
 	const uint32_t consumedCycles = executeInstruction(fetchInstruction(pc_));
 	if (consumedCycles == 0) {
@@ -236,6 +240,8 @@ uint8_t ConsoleMachine::readByte(uint16_t address) const {
 		case PPU_SPRITE_COUNT_HIGH_REGISTER: return static_cast<uint8_t>((spriteCount_ >> 8) & 0xFF);
 		case INPUT_STATUS_REGISTER: return inputQueue_.empty() ? 0 : 1;
 		case INPUT_DATA_REGISTER: return inputQueue_.empty() ? 0 : static_cast<uint8_t>(inputQueue_.front() & 0xFF);
+		case INPUT_BUTTONS_LOW_REGISTER: return static_cast<uint8_t>(inputButtons_ & 0xFF);
+		case INPUT_BUTTONS_HIGH_REGISTER: return static_cast<uint8_t>((inputButtons_ >> 8) & 0xFF);
 		case PROFILE_ID_REGISTER: return static_cast<uint8_t>(profile_.id);
 		case FAULT_CODE_REGISTER: return static_cast<uint8_t>(faultCode_);
 		case AUDIO_CHANNEL_REGISTER: return selectedAudioChannel_;

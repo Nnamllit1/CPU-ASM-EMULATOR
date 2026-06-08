@@ -64,10 +64,16 @@ if(CPU_ASM_BUILD_DESKTOP)
     FetchContent_Declare(
         imgui
         GIT_REPOSITORY https://github.com/ocornut/imgui.git
-        GIT_TAG v1.92.8
+        GIT_TAG v1.92.8-docking
         GIT_SHALLOW TRUE
     )
-    FetchContent_MakeAvailable(SDL3 imgui)
+    FetchContent_Declare(
+        imgui_color_text_edit
+        GIT_REPOSITORY https://github.com/goossens/ImGuiColorTextEdit.git
+        GIT_TAG a74fb090d2ea9276ae6c35c2f6ab39491c7d404f
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(SDL3 imgui imgui_color_text_edit)
 
     add_library(imgui-sdl3 STATIC
         ${imgui_SOURCE_DIR}/imgui.cpp
@@ -81,10 +87,21 @@ if(CPU_ASM_BUILD_DESKTOP)
     target_link_libraries(imgui-sdl3 PUBLIC SDL3::SDL3)
     target_compile_features(imgui-sdl3 PUBLIC cxx_std_20)
 
+    add_library(imgui-color-text-edit STATIC
+        ${imgui_color_text_edit_SOURCE_DIR}/TextEditor.cpp
+        ${imgui_color_text_edit_SOURCE_DIR}/example/dejavu.cpp
+    )
+    target_include_directories(imgui-color-text-edit PUBLIC
+        ${imgui_color_text_edit_SOURCE_DIR}
+        ${imgui_color_text_edit_SOURCE_DIR}/example
+    )
+    target_link_libraries(imgui-color-text-edit PUBLIC imgui-sdl3)
+    target_compile_features(imgui-color-text-edit PUBLIC cxx_std_20)
+
     add_executable(CPU-ASM-CONSOLE
         desktop/main.cpp
     )
     target_include_directories(CPU-ASM-CONSOLE PRIVATE CPU-ASM-EMULATOR)
-    target_link_libraries(CPU-ASM-CONSOLE PRIVATE console-core experimental-assembler imgui-sdl3 SDL3::SDL3)
+    target_link_libraries(CPU-ASM-CONSOLE PRIVATE console-core experimental-assembler imgui-color-text-edit imgui-sdl3 SDL3::SDL3)
     target_compile_features(CPU-ASM-CONSOLE PRIVATE cxx_std_20)
 endif()

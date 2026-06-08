@@ -38,6 +38,7 @@ Instruction ROM is Harvard-style. `0000-7FFF` is fixed and `8000-FFFF` is a swit
 | `FF13-FF14` | Sprite count | Little-endian number of active sprite descriptors |
 | `FF20` | Input status | Nonzero when queued input is available |
 | `FF21` | Input data | Read current input; write to consume it |
+| `FF22-FF23` | Console buttons | Little-endian held-button mask: Up, Down, Left, Right, A, B, Start, Select in bits 0-7 |
 | `FF30` | Profile ID | `0` Pocket, `1` Home, `2` Studio |
 | `FF31` | Fault code | Current deterministic hardware fault |
 | `FF40` | Audio channel | Selected audio channel index |
@@ -52,6 +53,12 @@ The assembly convenience library writes the same registers and VRAM used by dire
 ## Assets And Storage
 
 `CPU-ASM-ASSET input.ppm output.rgb332` converts P3/P6 PPM images to one-byte RGB332 pixels. The desktop environment can import the same files directly into VRAM. Persistent storage is saved as a raw profile-sized image and accessed through the banked `E000-FEFF` window.
+
+## Desktop Development Environment
+
+The SDL3 desktop target provides a dockable assembly editor, console display, source-level debugger, build/program output, project settings, and RAM/VRAM/ROM/storage/device inspectors. `Run` assembles the current editor contents, loads a fresh ROM, resets the machine, and starts execution. Editor-gutter breakpoints and the highlighted execution line use assembler-generated source mappings, including mappings from expanded macro instructions back to their invocation line.
+
+Keyboard, SDL gamepad, and on-screen controls feed the same eight logical console buttons. Projects can persist keyboard and gamepad bindings. Button holds are exposed through `FF22-FF23`, while the existing queued input registers and `in`/`inkey` instructions remain available for event-oriented input.
 
 ## Timing
 

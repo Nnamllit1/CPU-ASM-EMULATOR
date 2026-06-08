@@ -23,6 +23,8 @@ inline constexpr uint16_t PPU_SPRITE_COUNT_REGISTER = 0xFF13;
 inline constexpr uint16_t PPU_SPRITE_COUNT_HIGH_REGISTER = 0xFF14;
 inline constexpr uint16_t INPUT_STATUS_REGISTER = 0xFF20;
 inline constexpr uint16_t INPUT_DATA_REGISTER = 0xFF21;
+inline constexpr uint16_t INPUT_BUTTONS_LOW_REGISTER = 0xFF22;
+inline constexpr uint16_t INPUT_BUTTONS_HIGH_REGISTER = 0xFF23;
 inline constexpr uint16_t PROFILE_ID_REGISTER = 0xFF30;
 inline constexpr uint16_t FAULT_CODE_REGISTER = 0xFF31;
 inline constexpr uint16_t AUDIO_CHANNEL_REGISTER = 0xFF40;
@@ -70,6 +72,8 @@ public:
 	uint64_t peekInstruction(uint16_t address) const { return fetchInstruction(address); }
 
 	void queueInput(uint16_t value);
+	void setInputButtons(uint16_t value) { inputButtons_ = value; }
+	uint16_t inputButtons() const { return inputButtons_; }
 	bool loadStorageFile(const std::string& path, std::string& error);
 	bool saveStorageFile(const std::string& path, std::string& error) const;
 	bool loadVram(const std::vector<uint8_t>& bytes, size_t offset, std::string& error);
@@ -149,6 +153,8 @@ private:
 	uint8_t selectedAudioChannel_ = 0;
 	uint64_t audioCycleAccumulator_ = 0;
 	std::deque<uint16_t> inputQueue_;
+	uint16_t inputButtons_ = 0;
+	bool skipBreakpointOnce_ = false;
 	std::set<uint16_t> breakpoints_;
 	std::string output_;
 };

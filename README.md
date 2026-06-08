@@ -6,7 +6,7 @@ This is a simple emulator and ASM compiler for the "IDK i want to emulate a proc
 
 This is a project that may actually be actively be worked on by me for longer than 2 weeks. (This is not intended to be a promise.)
 
-The experimental branch adds an original color fantasy-console environment with deterministic hardware profiles, banked memory, a debugger, and a desktop editor. See [the architecture specification](docs/experimental-architecture.md).
+The experimental branch adds an original color fantasy-console environment with deterministic hardware profiles, banked memory, a source-level debugger, and a dockable desktop editor. See [the architecture specification](docs/experimental-architecture.md).
 
 It also includes persistent banked storage, deterministic square-wave audio, P3/P6 PPM image import, and the `CPU-ASM-ASSET` command-line RGB332 asset packer.
 
@@ -33,6 +33,8 @@ cmake -S . -B build-console -DCMAKE_BUILD_TYPE=Release -DCPU_ASM_BUILD_DESKTOP=O
 cmake --build build-console --parallel
 ./build-console/CPU-ASM-CONSOLE
 ```
+
+The desktop environment uses a syntax-highlighting assembly editor with gutter breakpoints and current-line execution highlighting. Its Run action builds, loads, resets, and starts in one step. Keyboard, physical SDL gamepads, and on-screen console controls share configurable bindings, and the Inspector window exposes RAM, VRAM, ROM, storage, device registers, framebuffer output, and raw RGB332 VRAM.
 
 ## Specifications
 

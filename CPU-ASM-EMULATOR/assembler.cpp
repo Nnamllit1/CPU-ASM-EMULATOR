@@ -13,6 +13,9 @@ uint16_t outputRomAddress = 0; // Tracks the ROM byte address while emitting chu
 uint16_t entryPoint = 0; // ROM byte address where emulation starts.
 bool resetVectorEnabled = false; // True when `.reset label` should write a hardware-style reset vector.
 uint16_t resetVectorAddress = 0; // ROM byte address written into reset vector bytes 0 and 1.
+std::vector<int> asmSourceLineOrigins;
+std::map<uint16_t, int> instructionSourceLines;
+std::map<int, uint16_t> sourceInstructionAddresses;
 
 // Stores one macro definition after parsing `%macro name param...`.
 // Body lines are kept as source text, then expanded before labels/instructions are processed.
@@ -310,7 +313,19 @@ bool loadDefaultIncludes() {
 		std::cout << "Loaded built-in default includes.\n";
 	}
 
-	asmFileContent = std::string(DEFAULT_INCLUDES_ASM) + "\n" + asmFileContent;
+	const std::string includes = std::string(DEFAULT_INCLUDES_ASM) + "\n";
+	const size_t includeLines = static_cast<size_t>(std::count(includes.begin(), includes.end(), '\n'));
+	std::vector<int> origins(includeLines, 0);
+	if (asmSourceLineOrigins.empty()) {
+		std::istringstream userSource(asmFileContent);
+		std::string userLine;
+		int lineNumber = 1;
+		while (std::getline(userSource, userLine)) origins.push_back(lineNumber++);
+	} else {
+		origins.insert(origins.end(), asmSourceLineOrigins.begin(), asmSourceLineOrigins.end());
+	}
+	asmSourceLineOrigins = std::move(origins);
+	asmFileContent = includes + asmFileContent;
 	return true;
 }
 
@@ -445,6 +460,7 @@ bool processInstruction() {
 	// Second pass: read each non-label line and emit the matching ROM chunk.
 	while (std::getline(iss, line)) {
 		++sourceLine;
+		const int originalSourceLine = sourceLine <= asmSourceLineOrigins.size() ? asmSourceLineOrigins[sourceLine - 1] : static_cast<int>(sourceLine);
 		line = trim(line);
 		// Skip empty lines and label definitions (already handled in first pass).
 		if (line.empty() || line.back() == ':') {
@@ -609,6 +625,10 @@ bool processInstruction() {
 			}
 
 			uint64_t encoded = encodeInstruction(ins);
+			if (originalSourceLine > 0) {
+				instructionSourceLines[outputRomAddress] = originalSourceLine;
+				sourceInstructionAddresses.try_emplace(originalSourceLine, outputRomAddress);
+			}
 			// Keep instruction-only output for verbose dumps and --outbin.
 			outputBinary.push_back(encoded);
 			outputRom.push_back({ true, encoded, 0 });
@@ -630,12 +650,16 @@ bool processMacros() {
 	std::istringstream iss(asmFileContent);
 	std::ostringstream expanded;
 	std::string line;
+	std::vector<int> expandedOrigins;
+	size_t sourceLine = 0;
 
 	bool inMacro = false;
 	std::string currentMacroName;
 	Macro currentMacro;
 
 	while (std::getline(iss, line)) {
+		const int originalSourceLine = sourceLine < asmSourceLineOrigins.size() ? asmSourceLineOrigins[sourceLine] : static_cast<int>(sourceLine + 1);
+		++sourceLine;
 		line = trim(line);
 
 		if (line.empty()) {
@@ -717,12 +741,14 @@ bool processMacros() {
 				}
 
 				expanded << bodyLine << "\n";
+				expandedOrigins.push_back(originalSourceLine);
 			}
 
 			continue;
 		}
 
 		expanded << line << "\n";
+		expandedOrigins.push_back(originalSourceLine);
 	}
 
 	if (inMacro) {
@@ -731,6 +757,7 @@ bool processMacros() {
 	}
 
 	asmFileContent = expanded.str();
+	asmSourceLineOrigins = std::move(expandedOrigins);
 	return true;
 }
 
@@ -796,6 +823,12 @@ bool writeRomBinary(const std::string& filePath) {
 bool assemble() {
 	if (asmFileContent == "") return false; // Return false if the assembly file content is empty
 	macros.clear();
+	if (asmSourceLineOrigins.empty()) {
+		std::istringstream sourceLines(asmFileContent);
+		std::string sourceLine;
+		int lineNumber = 1;
+		while (std::getline(sourceLines, sourceLine)) asmSourceLineOrigins.push_back(lineNumber++);
+	}
 
 	// Remove ';' comments and trim whitespace from the assembly file content before processing
 	std::istringstream iss(asmFileContent);
@@ -832,6 +865,8 @@ bool assemble() {
 	entryPoint = 0;
 	resetVectorEnabled = false;
 	resetVectorAddress = 0;
+	instructionSourceLines.clear();
+	sourceInstructionAddresses.clear();
 
 	if (processLabels()) {
 		if (ARG_verboseMode) {

@@ -71,6 +71,11 @@ bool loadProject(const std::string& path, ConsoleProject& project, std::string& 
 	if (integerValue(json, "spritesPerScanline", value)) project.studio.spritesPerScanline = static_cast<uint32_t>(value);
 	if (integerValue(json, "paletteColors", value)) project.studio.paletteColors = static_cast<uint32_t>(value);
 	if (integerValue(json, "audioChannels", value)) project.studio.audioChannels = static_cast<uint32_t>(value);
+	const std::array<const char*, ConsoleButtonCount> buttonNames = { "Up", "Down", "Left", "Right", "A", "B", "Start", "Select" };
+	for (size_t i = 0; i < buttonNames.size(); ++i) {
+		if (integerValue(json, std::string("key") + buttonNames[i], value)) project.input.keyboard[i] = static_cast<int32_t>(value);
+		if (integerValue(json, std::string("pad") + buttonNames[i], value)) project.input.gamepad[i] = static_cast<int32_t>(value);
+	}
 
 	if (!validateProfile(project.profile == ProfileId::Studio ? project.studio : profileFor(project.profile), error)) {
 		return false;
@@ -105,6 +110,16 @@ bool saveProject(const std::string& path, const ConsoleProject& project, std::st
 		<< "    \"spritesPerScanline\": " << project.studio.spritesPerScanline << ",\n"
 		<< "    \"paletteColors\": " << project.studio.paletteColors << ",\n"
 		<< "    \"audioChannels\": " << project.studio.audioChannels << "\n"
+		<< "  },\n"
+		<< "  \"input\": {\n"
+		<< "    \"keyUp\": " << project.input.keyboard[0] << ", \"keyDown\": " << project.input.keyboard[1] << ",\n"
+		<< "    \"keyLeft\": " << project.input.keyboard[2] << ", \"keyRight\": " << project.input.keyboard[3] << ",\n"
+		<< "    \"keyA\": " << project.input.keyboard[4] << ", \"keyB\": " << project.input.keyboard[5] << ",\n"
+		<< "    \"keyStart\": " << project.input.keyboard[6] << ", \"keySelect\": " << project.input.keyboard[7] << ",\n"
+		<< "    \"padUp\": " << project.input.gamepad[0] << ", \"padDown\": " << project.input.gamepad[1] << ",\n"
+		<< "    \"padLeft\": " << project.input.gamepad[2] << ", \"padRight\": " << project.input.gamepad[3] << ",\n"
+		<< "    \"padA\": " << project.input.gamepad[4] << ", \"padB\": " << project.input.gamepad[5] << ",\n"
+		<< "    \"padStart\": " << project.input.gamepad[6] << ", \"padSelect\": " << project.input.gamepad[7] << "\n"
 		<< "  }\n"
 		<< "}\n";
 	error.clear();

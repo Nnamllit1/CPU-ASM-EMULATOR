@@ -18,6 +18,9 @@ extern uint16_t outputRomAddress; // Tracks the ROM byte address while emitting 
 extern uint16_t entryPoint; // ROM byte address where emulation starts.
 extern bool resetVectorEnabled; // True when `.reset label` should write a hardware-style reset vector.
 extern uint16_t resetVectorAddress; // ROM byte address written into reset vector bytes 0 and 1.
+extern std::vector<int> asmSourceLineOrigins; // Original user source line for each current assembly line; 0 means generated/include code.
+extern std::map<uint16_t, int> instructionSourceLines; // ROM instruction address -> original source line.
+extern std::map<int, uint16_t> sourceInstructionAddresses; // Original source line -> first emitted instruction address.
 
 void initializeRegisterNames();
 bool loadDefaultIncludes();
