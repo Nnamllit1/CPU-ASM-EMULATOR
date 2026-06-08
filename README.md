@@ -1,8 +1,12 @@
 # CPU-ASM-EMULATOR
 
+> **AI-made experimental branch:** The `ai-console-experiment` branch is intentionally implemented predominantly with AI assistance. The released `main` branch remains the maintainer's original CPU/assembler project.
+
 This is a simple emulator and ASM compiler for the "IDK i want to emulate a processor for fun" processor (or IDKIWTEAPFF for short).
 
 This is a project that may actually be actively be worked on by me for longer than 2 weeks. (This is not intended to be a promise.)
+
+The experimental branch adds an original color fantasy-console environment with deterministic hardware profiles, banked memory, a debugger, and a desktop editor. See [the architecture specification](docs/experimental-architecture.md).
 
 ## Building
 
@@ -18,6 +22,14 @@ The Linux build requires CMake 3.20 or newer and a C++20 compiler.
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ./build/CPU-ASM-EMULATOR --help
+```
+
+To build the experimental desktop console environment, enable its dependency-backed target:
+
+```sh
+cmake -S . -B build-console -DCMAKE_BUILD_TYPE=Release -DCPU_ASM_BUILD_DESKTOP=ON
+cmake --build build-console --parallel
+./build-console/CPU-ASM-CONSOLE
 ```
 
 ## Specifications

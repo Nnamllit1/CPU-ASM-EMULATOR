@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+      - ai-console-experiment
     tags:
       - "v*"
   pull_request:
@@ -332,6 +333,86 @@ jobs:
         with:
           name: CPU-ASM-EMULATOR-linux-x64
           path: dist/CPU-ASM-EMULATOR-linux-x64.tar.gz
+
+  experimental-linux:
+    name: Experimental Console Linux
+    if: github.ref == 'refs/heads/ai-console-experiment' || (github.event_name == 'pull_request' && github.base_ref == 'ai-console-experiment')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SDL build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev libdbus-1-dev libegl1-mesa-dev libgl1-mesa-dev \
+            libpulse-dev libudev-dev libwayland-dev libx11-dev libxcursor-dev \
+            libxext-dev libxfixes-dev libxi-dev libxkbcommon-dev libxrandr-dev \
+            libxss-dev
+
+      - name: Configure
+        run: cmake -S . -B build-console -DCMAKE_BUILD_TYPE=Release -DCPU_ASM_BUILD_DESKTOP=ON
+
+      - name: Build
+        run: cmake --build build-console --parallel
+
+      - name: Test
+        run: ctest --test-dir build-console --output-on-failure
+
+      - name: Headless startup smoke test
+        shell: bash
+        run: |
+          set +e
+          SDL_VIDEODRIVER=dummy timeout 3 ./build-console/CPU-ASM-CONSOLE
+          status=$?
+          test "$status" -eq 124
+
+      - name: Package
+        run: |
+          mkdir -p dist/CPU-ASM-CONSOLE-linux-x64
+          cp build-console/CPU-ASM-CONSOLE build-console/CPU-ASM-EMULATOR dist/CPU-ASM-CONSOLE-linux-x64/
+          cp -r docs examples dist/CPU-ASM-CONSOLE-linux-x64/
+          tar -C dist -czf dist/CPU-ASM-CONSOLE-ai-linux-x64.tar.gz CPU-ASM-CONSOLE-linux-x64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CPU-ASM-CONSOLE-ai-linux-x64
+          path: dist/CPU-ASM-CONSOLE-ai-linux-x64.tar.gz
+
+  experimental-windows:
+    name: Experimental Console Windows
+    if: github.ref == 'refs/heads/ai-console-experiment' || (github.event_name == 'pull_request' && github.base_ref == 'ai-console-experiment')
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build-console -A x64 -DCPU_ASM_BUILD_DESKTOP=ON
+
+      - name: Build
+        run: cmake --build build-console --config Release --parallel
+
+      - name: Test
+        run: ctest --test-dir build-console -C Release --output-on-failure
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist\CPU-ASM-CONSOLE-windows-x64 | Out-Null
+          Copy-Item build-console\Release\CPU-ASM-CONSOLE.exe, build-console\Release\CPU-ASM-EMULATOR.exe dist\CPU-ASM-CONSOLE-windows-x64\
+          Copy-Item docs, examples -Destination dist\CPU-ASM-CONSOLE-windows-x64\ -Recurse
+          Compress-Archive -Path dist\CPU-ASM-CONSOLE-windows-x64 -DestinationPath dist\CPU-ASM-CONSOLE-ai-windows-x64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CPU-ASM-CONSOLE-ai-windows-x64
+          path: dist/CPU-ASM-CONSOLE-ai-windows-x64.zip
 
   release:
     name: Create GitHub Release

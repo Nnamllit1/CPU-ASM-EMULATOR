@@ -43,4 +43,34 @@ inline constexpr const char* DEFAULT_INCLUDES_ASM = R"asm(
 %macro readkey reg
     inkey {reg}
 %endmacro
+
+%macro rambank reg bank
+    movi {reg}, {bank}
+    stbi {reg}, 0xFF00
+%endmacro
+
+%macro vbank reg bank
+    movi {reg}, {bank}
+    stbi {reg}, 0xFF01
+%endmacro
+
+%macro rombank reg bank
+    movi {reg}, {bank}
+    stbi {reg}, 0xFF02
+%endmacro
+
+%macro ppumode reg mode
+    movi {reg}, {mode}
+    stbi {reg}, 0xFF10
+%endmacro
+
+%macro present reg
+    movi {reg}, 1
+    stbi {reg}, 0xFF12
+%endmacro
+
+%macro sprites reg count
+    movi {reg}, {count}
+    stbi {reg}, 0xFF13
+%endmacro
 )asm";

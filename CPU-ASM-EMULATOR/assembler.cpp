@@ -440,9 +440,11 @@ bool processLabels() {
 bool processInstruction() {
 	std::istringstream iss(asmFileContent);
 	std::string line;
+	size_t sourceLine = 0;
 
 	// Second pass: read each non-label line and emit the matching ROM chunk.
 	while (std::getline(iss, line)) {
+		++sourceLine;
 		line = trim(line);
 		// Skip empty lines and label definitions (already handled in first pass).
 		if (line.empty() || line.back() == ':') {
@@ -614,7 +616,8 @@ bool processInstruction() {
 		}
 		catch (const std::exception& e) {
 			// Propagate error details including the source line for easier debugging.
-			std::cout << "Error: " << e.what() << " in line: " << line << "\n";
+			std::cout << "Error on expanded line " << sourceLine << ": " << e.what() << "\n"
+				<< "    " << line << "\n";
 			return false;
 		}
 	}
@@ -792,6 +795,7 @@ bool writeRomBinary(const std::string& filePath) {
 // Assembler function to convert assembly code into binary instructions (64-bit)
 bool assemble() {
 	if (asmFileContent == "") return false; // Return false if the assembly file content is empty
+	macros.clear();
 
 	// Remove ';' comments and trim whitespace from the assembly file content before processing
 	std::istringstream iss(asmFileContent);
@@ -888,5 +892,3 @@ bool assemble() {
 
 	return true; // Return true if assembly is successful, false otherwise
 }
-
-

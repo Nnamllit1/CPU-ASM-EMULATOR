@@ -23,3 +23,4 @@ void initializeRegisterNames();
 bool loadDefaultIncludes();
 bool assemble();
 bool writeRomBinary(const std::string& filePath);
+std::vector<uint8_t> buildRomImage();
