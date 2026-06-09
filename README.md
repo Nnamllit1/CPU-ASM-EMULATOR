@@ -1,6 +1,6 @@
 # CPU-ASM-EMULATOR
 
-> **AI-made console branch:** The `ai-console-experiment` branch is intentionally implemented predominantly with AI assistance. The v1.1 console release is built from this branch, while `main` retains the maintainer's original CPU/assembler project.
+> **AI-made console branch:** The `ai-console-experiment` branch is intentionally implemented predominantly with AI assistance. The v1.2 console release is built from this branch, while `main` retains the maintainer's original CPU/assembler project.
 
 This is a simple emulator and ASM compiler for the "IDK i want to emulate a processor for fun" processor (or IDKIWTEAPFF for short).
 

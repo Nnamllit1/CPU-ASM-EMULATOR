@@ -934,15 +934,33 @@ int main(int, char**) {
 		if (executionLine > 0) ImGui::TextColored(ImVec4(0.95f, 0.76f, 0.30f, 1), "Source line %d", executionLine);
 		if (machine.state() == console::MachineState::Faulted) ImGui::TextColored(ImVec4(1, 0.35f, 0.35f, 1), "%s", machine.faultMessage().c_str());
 		if (ImGui::CollapsingHeader("Registers", ImGuiTreeNodeFlags_DefaultOpen)) {
-			if (ImGui::BeginTable("registers", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg)) {
-				for (size_t i = 0; i < machine.registers().size(); ++i) {
-					ImGui::TableNextColumn();
-					uint16_t value = machine.registers()[i];
-					ImGui::PushID(static_cast<int>(i));
-					ImGui::SetNextItemWidth(-1);
-					std::string label = "R" + std::to_string(i) + "##register";
-					if (ImGui::InputScalar(label.c_str(), ImGuiDataType_U16, &value, nullptr, nullptr, "%04X", ImGuiInputTextFlags_CharsHexadecimal)) machine.registers()[i] = value;
-					ImGui::PopID();
+			if (ImGui::BeginTable("registers", 4,
+				ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersInnerH |
+				ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+				ImGui::TableSetupColumn("Register", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+				ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableSetupColumn("Register", ImGuiTableColumnFlags_WidthFixed, 58.0f);
+				ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+				ImGui::TableHeadersRow();
+				const size_t registersPerSide = (machine.registers().size() + 1) / 2;
+				for (size_t row = 0; row < registersPerSide; ++row) {
+					ImGui::TableNextRow();
+					for (size_t side = 0; side < 2; ++side) {
+						const size_t index = row + side * registersPerSide;
+						ImGui::TableSetColumnIndex(static_cast<int>(side * 2));
+						if (index >= machine.registers().size()) continue;
+						ImGui::Text("r%zu", index);
+						ImGui::TableSetColumnIndex(static_cast<int>(side * 2 + 1));
+						uint16_t value = machine.registers()[index];
+						ImGui::PushID(static_cast<int>(index));
+						ImGui::SetNextItemWidth(-1);
+						if (ImGui::InputScalar("##value", ImGuiDataType_U16, &value, nullptr, nullptr, "%04X",
+							ImGuiInputTextFlags_CharsHexadecimal)) {
+							machine.registers()[index] = value;
+						}
+						if (ImGui::IsItemHovered()) ImGui::SetTooltip("r%zu = %u decimal", index, value);
+						ImGui::PopID();
+					}
 				}
 				ImGui::EndTable();
 			}
