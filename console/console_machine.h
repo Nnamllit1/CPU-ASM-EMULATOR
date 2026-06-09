@@ -101,6 +101,8 @@ public:
 	void setSp(uint16_t value) { sp_ = value; }
 	uint64_t cycles() const { return cycles_; }
 	uint64_t frames() const { return frames_; }
+	uint32_t currentScanline() const { return currentScanline_; }
+	double scanlineProgress() const;
 	uint8_t ramBank() const { return ramBank_; }
 	uint8_t vramBank() const { return vramBank_; }
 	uint8_t romBank() const { return romBank_; }
@@ -118,6 +120,9 @@ private:
 	uint64_t fetchInstruction(uint16_t address) const;
 	uint32_t executeInstruction(uint64_t instruction);
 	void refreshFramebuffer();
+	void renderScanline(uint32_t scanline);
+	void restartScanout();
+	void advanceScanoutLines(uint64_t lines);
 	void advanceDevices(uint32_t consumedCycles);
 	void fault(FaultCode code, std::string message);
 	size_t mappedRamIndex(uint16_t address) const;
@@ -141,8 +146,9 @@ private:
 	uint16_t entryPoint_ = 0;
 	uint16_t sp_ = 0xFFFE;
 	uint64_t cycles_ = 0;
-	uint64_t cyclesIntoFrame_ = 0;
+	uint64_t scanlinePhase_ = 0;
 	uint64_t frames_ = 0;
+	uint32_t currentScanline_ = 0;
 	uint8_t ramBank_ = 0;
 	uint8_t vramBank_ = 0;
 	uint8_t romBank_ = 0;

@@ -1,5 +1,5 @@
 ; Pocket Snake
-; Target: Pocket Color, 4 MHz, 160x144, 32 colors, 40 sprites.
+; Target: Pocket Color, 4 MHz, 160x144 at 30 Hz, 32 colors, 40 sprites.
 ;
 ; Controls: D-pad / arrow keys. Press Start or Enter after a crash.
 ; The board uses 8x8 tiles (20x18 cells). The snake and food are hardware

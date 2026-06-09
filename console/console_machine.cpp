@@ -79,8 +79,9 @@ void ConsoleMachine::reset() {
 	pc_ = entryPoint_;
 	sp_ = 0xFFFE;
 	cycles_ = 0;
-	cyclesIntoFrame_ = 0;
+	scanlinePhase_ = 0;
 	frames_ = 0;
+	currentScanline_ = 0;
 	ramBank_ = 0;
 	vramBank_ = 0;
 	romBank_ = 0;
@@ -99,6 +100,10 @@ void ConsoleMachine::reset() {
 	skipBreakpointOnce_ = false;
 	output_.clear();
 	refreshFramebuffer();
+}
+
+double ConsoleMachine::scanlineProgress() const {
+	return profile_.clockHz == 0 ? 0.0 : static_cast<double>(scanlinePhase_) / profile_.clockHz;
 }
 
 void ConsoleMachine::run() {
@@ -187,7 +192,7 @@ bool ConsoleMachine::loadVram(const std::vector<uint8_t>& bytes, size_t offset, 
 		return false;
 	}
 	std::copy(bytes.begin(), bytes.end(), vram_.begin() + static_cast<std::ptrdiff_t>(offset));
-	refreshFramebuffer();
+	restartScanout();
 	error.clear();
 	return true;
 }
@@ -240,7 +245,7 @@ uint8_t ConsoleMachine::readByte(uint16_t address) const {
 		case ROM_BANK_REGISTER: return romBank_;
 		case STORAGE_BANK_REGISTER: return storageBank_;
 		case PPU_CONTROL_REGISTER: return ppuControl_;
-		case PPU_STATUS_REGISTER: return cyclesIntoFrame_ == 0 ? 1 : 0;
+		case PPU_STATUS_REGISTER: return currentScanline_ == 0 ? 1 : 0;
 		case PPU_SPRITE_COUNT_REGISTER: return static_cast<uint8_t>(spriteCount_ & 0xFF);
 		case PPU_SPRITE_COUNT_HIGH_REGISTER: return static_cast<uint8_t>((spriteCount_ >> 8) & 0xFF);
 		case INPUT_STATUS_REGISTER: return inputQueue_.empty() ? 0 : 1;
@@ -286,7 +291,7 @@ void ConsoleMachine::writeByte(uint16_t address, uint8_t value) {
 		case ROM_BANK_REGISTER: romBank_ = value; break;
 		case STORAGE_BANK_REGISTER: storageBank_ = value; break;
 		case PPU_CONTROL_REGISTER: ppuControl_ = value; break;
-		case PPU_PRESENT_REGISTER: refreshFramebuffer(); break;
+		case PPU_PRESENT_REGISTER: restartScanout(); break;
 		case PPU_SPRITE_COUNT_REGISTER: spriteCount_ = static_cast<uint16_t>((spriteCount_ & 0xFF00) | value); break;
 		case PPU_SPRITE_COUNT_HIGH_REGISTER: spriteCount_ = static_cast<uint16_t>((spriteCount_ & 0x00FF) | (value << 8)); break;
 		case INPUT_DATA_REGISTER:
@@ -430,29 +435,36 @@ uint32_t ConsoleMachine::executeInstruction(uint64_t instruction) {
 }
 
 void ConsoleMachine::refreshFramebuffer() {
+	for (uint32_t scanline = 0; scanline < profile_.displayHeight; ++scanline) renderScanline(scanline);
+}
+
+void ConsoleMachine::renderScanline(uint32_t scanline) {
+	if (scanline >= profile_.displayHeight) return;
+	const size_t rowStart = static_cast<size_t>(scanline) * profile_.displayWidth;
+	const size_t rowEnd = rowStart + profile_.displayWidth;
 	if ((ppuControl_ & 1) == 0) {
-		std::fill(framebuffer_.begin(), framebuffer_.end(), 0x000000FF);
+		std::fill(framebuffer_.begin() + static_cast<std::ptrdiff_t>(rowStart),
+			framebuffer_.begin() + static_cast<std::ptrdiff_t>(rowEnd), 0x000000FF);
 		return;
 	}
-	auto constrainedColor = [this](uint8_t color) {
+	const auto constrainedColor = [this](uint8_t color) {
 		return profile_.paletteColors <= 32 ? static_cast<uint8_t>(color & 0xDA) : color;
 	};
 
 	if ((ppuControl_ & 0x02) != 0) {
 		const uint32_t mapWidth = (profile_.displayWidth + 7) / 8;
-		for (uint32_t y = 0; y < profile_.displayHeight; ++y) {
-			for (uint32_t x = 0; x < profile_.displayWidth; ++x) {
-				const size_t mapIndex = TileMapOffset + (y / 8) * mapWidth + (x / 8);
-				const uint8_t tile = mapIndex < vram_.size() ? vram_[mapIndex] : 0;
-				const size_t pixelIndex = static_cast<size_t>(tile) * 64 + (y % 8) * 8 + (x % 8);
-				const uint8_t color = pixelIndex < vram_.size() ? vram_[pixelIndex] : 0;
-				framebuffer_[static_cast<size_t>(y) * profile_.displayWidth + x] = rgb332ToRgba(constrainedColor(color));
-			}
+		for (uint32_t x = 0; x < profile_.displayWidth; ++x) {
+			const size_t mapIndex = TileMapOffset + (scanline / 8) * mapWidth + (x / 8);
+			const uint8_t tile = mapIndex < vram_.size() ? vram_[mapIndex] : 0;
+			const size_t pixelIndex = static_cast<size_t>(tile) * 64 + (scanline % 8) * 8 + (x % 8);
+			const uint8_t color = pixelIndex < vram_.size() ? vram_[pixelIndex] : 0;
+			framebuffer_[rowStart + x] = rgb332ToRgba(constrainedColor(color));
 		}
 	} else {
-		const size_t count = std::min(framebuffer_.size(), vram_.size());
-		for (size_t i = 0; i < count; ++i) {
-			framebuffer_[i] = rgb332ToRgba(constrainedColor(vram_[i]));
+		for (uint32_t x = 0; x < profile_.displayWidth; ++x) {
+			const size_t pixel = rowStart + x;
+			const uint8_t color = pixel < vram_.size() ? vram_[pixel] : 0;
+			framebuffer_[pixel] = rgb332ToRgba(constrainedColor(color));
 		}
 	}
 
@@ -460,33 +472,52 @@ void ConsoleMachine::refreshFramebuffer() {
 		fault(FaultCode::PpuLimitExceeded, "Program exceeded the profile sprite limit.");
 		return;
 	}
-	std::vector<uint32_t> spritesOnScanline(profile_.displayHeight, 0);
+	uint32_t spritesOnScanline = 0;
 	for (uint32_t sprite = 0; sprite < spriteCount_; ++sprite) {
 		const size_t descriptor = SpriteTableOffset + sprite * SpriteDescriptorBytes;
 		if (descriptor + SpriteDescriptorBytes > vram_.size()) break;
 		const uint16_t x = static_cast<uint16_t>(vram_[descriptor] | (vram_[descriptor + 1] << 8));
 		const uint16_t y = static_cast<uint16_t>(vram_[descriptor + 2] | (vram_[descriptor + 3] << 8));
-		const uint8_t color = constrainedColor(vram_[descriptor + 4]);
 		const uint8_t size = std::clamp<uint8_t>(vram_[descriptor + 5], 1, 32);
-		for (uint32_t py = y; py < std::min<uint32_t>(profile_.displayHeight, y + size); ++py) {
-			if (spritesOnScanline[py] >= profile_.spritesPerScanline) continue;
-			++spritesOnScanline[py];
-			for (uint32_t px = x; px < std::min<uint32_t>(profile_.displayWidth, x + size); ++px) {
-				framebuffer_[static_cast<size_t>(py) * profile_.displayWidth + px] = rgb332ToRgba(color);
-			}
+		if (scanline < y || scanline >= static_cast<uint32_t>(y) + size) continue;
+		if (spritesOnScanline >= profile_.spritesPerScanline) continue;
+		++spritesOnScanline;
+		const uint8_t color = constrainedColor(vram_[descriptor + 4]);
+		for (uint32_t px = x; px < std::min<uint32_t>(profile_.displayWidth, static_cast<uint32_t>(x) + size); ++px) {
+			framebuffer_[rowStart + px] = rgb332ToRgba(color);
 		}
+	}
+}
+
+void ConsoleMachine::restartScanout() {
+	scanlinePhase_ = 0;
+	currentScanline_ = 0;
+	renderScanline(0);
+}
+
+void ConsoleMachine::advanceScanoutLines(uint64_t lines) {
+	if (lines == 0 || profile_.displayHeight == 0) return;
+	const uint64_t totalLines = static_cast<uint64_t>(currentScanline_) + lines;
+	const uint64_t completedFrames = totalLines / profile_.displayHeight;
+	const uint32_t finalScanline = static_cast<uint32_t>(totalLines % profile_.displayHeight);
+	if (completedFrames > 0) {
+		refreshFramebuffer();
+		frames_ += completedFrames;
+		currentScanline_ = 0;
+	}
+	while (currentScanline_ < finalScanline) {
+		renderScanline(currentScanline_);
+		++currentScanline_;
 	}
 }
 
 void ConsoleMachine::advanceDevices(uint32_t consumedCycles) {
 	generateAudio(consumedCycles);
-	cyclesIntoFrame_ += consumedCycles;
-	const uint64_t cyclesPerFrame = std::max<uint64_t>(1, profile_.clockHz / profile_.framesPerSecond);
-	while (cyclesIntoFrame_ >= cyclesPerFrame) {
-		cyclesIntoFrame_ -= cyclesPerFrame;
-		++frames_;
-		refreshFramebuffer();
-	}
+	const uint64_t scanlineUnits = static_cast<uint64_t>(consumedCycles) *
+		profile_.framesPerSecond * profile_.displayHeight;
+	const uint64_t accumulated = scanlinePhase_ + scanlineUnits;
+	advanceScanoutLines(accumulated / profile_.clockHz);
+	scanlinePhase_ = accumulated % profile_.clockHz;
 }
 
 void ConsoleMachine::generateAudio(uint32_t consumedCycles) {

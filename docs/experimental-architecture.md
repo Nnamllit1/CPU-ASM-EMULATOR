@@ -6,9 +6,9 @@ This document defines the hardware contract used by the `ai-console-experiment` 
 
 | Profile | CPU | Display | RAM | ROM | VRAM | Storage | Sprites | Audio |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Pocket Color | 4 MHz | 160x144 | 256 KiB | 1 MiB | 64 KiB | 64 KiB | 40, 10/scanline | 4 square-wave channels |
-| Home 16 | 8 MHz | 320x240 | 1 MiB | 4 MiB | 256 KiB | 1 MiB | 128, 32/scanline | 8 square-wave channels |
-| Studio | 1 Hz-1 GHz | 64x64-3840x2160 | 64 KiB-256 MiB | 64 KiB-512 MiB | framebuffer-256 MiB | 0-256 MiB | configurable | configurable |
+| Pocket Color | 4 MHz | 160x144 @ 30 Hz | 256 KiB | 1 MiB | 64 KiB | 64 KiB | 40, 10/scanline | 4 square-wave channels |
+| Home 16 | 8 MHz | 320x240 @ 50 Hz | 1 MiB | 4 MiB | 256 KiB | 1 MiB | 128, 32/scanline | 8 square-wave channels |
+| Studio | 1 Hz-1 GHz | 64x64-3840x2160 @ 1-240 Hz | 64 KiB-256 MiB | 64 KiB-512 MiB | framebuffer-256 MiB | 0-256 MiB | configurable | configurable |
 
 All profiles execute the same instruction set. Projects select a profile at runtime and may be tested under another profile without rebuilding. Custom Hardware can copy Pocket Color, Home 16, or Studio as a reference preset before individual values are overridden; the resulting machine still reports the custom profile ID.
 
@@ -49,7 +49,7 @@ Instruction ROM is Harvard-style. `0000-7FFF` is fixed and `8000-FFFF` is a swit
 | `FF52-FF53` | Frame timer | Big-endian low 16 bits of completed display frames |
 | `FF54-FF55` | Cycle timer | Big-endian low 16 bits of executed CPU cycles |
 
-PPU control bit 1 selects tile mode. Framebuffer mode uses one RGB332 byte per pixel at the start of VRAM. Tile mode uses 256 8x8 RGB332 tiles at `VRAM 0000-3FFF` and a tile map at `VRAM 4000`. Sprite descriptors begin at `VRAM 5000` and contain little-endian X, little-endian Y, RGB332 color, and square size. Pocket Color quantizes output to 32 colors; every profile enforces total and per-scanline sprite limits.
+PPU control bit 1 selects tile mode. Framebuffer mode uses one RGB332 byte per pixel at the start of VRAM. Tile mode uses 256 8x8 RGB332 tiles at `VRAM 0000-3FFF` and a tile map at `VRAM 4000`. Sprite descriptors begin at `VRAM 5000` and contain little-endian X, little-endian Y, RGB332 color, and square size. Pocket Color quantizes output to 32 colors; every profile enforces total and per-scanline sprite limits. The visible framebuffer is updated progressively as scanline periods elapse. Writing `FF12` restarts scanout at the top and exposes the first row immediately.
 
 The assembly convenience library writes the same registers and VRAM used by direct hardware access.
 
@@ -65,6 +65,6 @@ Keyboard, SDL gamepad, and on-screen controls feed the same eight logical consol
 
 ## Timing
 
-Execution is deterministic. ALU instructions cost one cycle, taken branches cost two, memory operations cost two, stack/call operations cost three, and device I/O costs four. Frame boundaries derive from profile clock speed and frame rate, not host speed.
+Execution is deterministic. ALU instructions cost one cycle, taken branches cost two, memory operations cost two, stack/call operations cost three, and device I/O costs four. Scanlines and frame boundaries derive from profile clock speed, display height, and refresh rate, not host speed. Desktop execution speed changes how quickly those cycles are consumed relative to wall time; it does not change program-visible clocks or timers.
 
 Assembly can read the 16-bit timing registers directly with `ldi`, or use `%millis`, `%frames`, and `%cycles` from the default include library. Timer subtraction is wrap-safe for intervals shorter than 65536 units.

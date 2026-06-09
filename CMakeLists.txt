@@ -11,6 +11,7 @@ add_library(console-core
     console/console_machine.cpp
     console/disassembler.cpp
     console/hardware_profile.cpp
+    console/playback.cpp
     console/project.cpp
 )
 target_include_directories(console-core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

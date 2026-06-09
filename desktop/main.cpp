@@ -1,6 +1,7 @@
 #include "../console/asset_import.h"
 #include "../console/console_machine.h"
 #include "../console/disassembler.h"
+#include "../console/playback.h"
 #include "../console/project.h"
 #include "../console/source_builder.h"
 
@@ -14,6 +15,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -30,6 +32,11 @@ namespace {
 constexpr size_t PathCapacity = 512;
 constexpr std::array<const char*, console::ConsoleButtonCount> ButtonNames = {
 	"Up", "Down", "Left", "Right", "A", "B", "Start", "Select"
+};
+
+struct DesktopPreferences {
+	float executionSpeed = 1.0f;
+	bool unlimited = false;
 };
 
 const char* defaultSource = R"asm(; CPU ASM console: RGB332 color bars.
@@ -78,6 +85,36 @@ bool writeTextFile(const std::string& path, const std::string& text) {
 	if (!output) return false;
 	output << text;
 	return output.good();
+}
+
+std::string desktopPreferencesPath() {
+	char* directory = SDL_GetPrefPath("Nnamllit1", "CPU-ASM-CONSOLE");
+	if (!directory) return {};
+	const std::string path = std::string(directory) + "desktop-settings.txt";
+	SDL_free(directory);
+	return path;
+}
+
+DesktopPreferences loadDesktopPreferences(const std::string& path) {
+	DesktopPreferences preferences;
+	std::ifstream input(path);
+	std::string key;
+	while (input >> key) {
+		if (key == "executionSpeed") input >> preferences.executionSpeed;
+		else if (key == "unlimited") input >> preferences.unlimited;
+	}
+	if (!std::isfinite(preferences.executionSpeed) || preferences.executionSpeed < 0.05f || preferences.executionSpeed > 10.0f) {
+		preferences.executionSpeed = 1.0f;
+	}
+	return preferences;
+}
+
+void saveDesktopPreferences(const std::string& path, const DesktopPreferences& preferences) {
+	if (path.empty()) return;
+	std::ofstream output(path, std::ios::trunc);
+	if (!output) return;
+	output << "executionSpeed " << preferences.executionSpeed << '\n'
+		<< "unlimited " << preferences.unlimited << '\n';
 }
 
 const char* stateName(console::MachineState state) {
@@ -292,6 +329,8 @@ int main(int, char**) {
 		std::cerr << "SDL initialization failed: " << SDL_GetError() << "\n";
 		return 1;
 	}
+	const std::string preferencesPath = desktopPreferencesPath();
+	DesktopPreferences preferences = loadDesktopPreferences(preferencesPath);
 
 	SDL_Window* window = SDL_CreateWindow("CPU ASM Console", 1500, 920, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 	SDL_Renderer* renderer = window ? SDL_CreateRenderer(window, nullptr) : nullptr;
@@ -362,6 +401,8 @@ int main(int, char**) {
 	bool resetWorkspace = false;
 	float uiScale = 0.88f;
 	float editorLineSpacing = 1.08f;
+	float executionSpeed = preferences.executionSpeed;
+	bool unlimitedSpeed = preferences.unlimited;
 	SDL_Window* settingsWindow = nullptr;
 	SDL_Renderer* settingsRenderer = nullptr;
 	ImGuiContext* settingsContext = nullptr;
@@ -385,6 +426,15 @@ int main(int, char**) {
 	bool running = true;
 	uint64_t lastTick = SDL_GetTicksNS();
 	double cycleAccumulator = 0.0;
+	auto applySpeedPreference = [&]() {
+		executionSpeed = std::clamp(executionSpeed, 0.05f, 10.0f);
+		cycleAccumulator = 0.0;
+		machine.drainAudioSamples();
+		if (audioStream) SDL_ClearAudioStream(audioStream);
+		preferences.executionSpeed = executionSpeed;
+		preferences.unlimited = unlimitedSpeed;
+		saveDesktopPreferences(preferencesPath, preferences);
+	};
 
 	auto synchronizeBreakpoints = [&]() {
 		machine.clearBreakpoints();
@@ -507,8 +557,10 @@ int main(int, char**) {
 					}
 					int width = static_cast<int>(project.studio.displayWidth);
 					int height = static_cast<int>(project.studio.displayHeight);
+					int refreshRate = static_cast<int>(project.studio.framesPerSecond);
 					if (ImGui::SliderInt("Display width", &width, 64, 1920)) project.studio.displayWidth = static_cast<uint32_t>(width);
 					if (ImGui::SliderInt("Display height", &height, 64, 1080)) project.studio.displayHeight = static_cast<uint32_t>(height);
+					if (ImGui::SliderInt("Refresh Hz", &refreshRate, 1, 240)) project.studio.framesPerSecond = static_cast<uint32_t>(refreshRate);
 					auto memoryInput = [](const char* label, size_t& bytes, uint64_t minimumKiB, uint64_t maximumKiB) {
 						uint64_t kibibytes = static_cast<uint64_t>(bytes / 1024);
 						const uint64_t step = 64;
@@ -686,17 +738,42 @@ int main(int, char**) {
 		lastTick = currentTick;
 		const console::MachineState stateBeforeExecution = machine.state();
 		if (machine.state() == console::MachineState::Running) {
-			cycleAccumulator += elapsedSeconds * static_cast<double>(machine.profile().clockHz);
-			const uint64_t availableCycles = static_cast<uint64_t>(cycleAccumulator);
-			const uint64_t executionBudget = std::min<uint64_t>(availableCycles, 200'000);
-			machine.runForCycles(executionBudget);
-			cycleAccumulator -= static_cast<double>(executionBudget);
-			cycleAccumulator = std::min(cycleAccumulator, 400'000.0);
+			const uint64_t executionDeadline = SDL_GetTicksNS() + 4'000'000;
+			if (unlimitedSpeed) {
+				cycleAccumulator = 0.0;
+				do {
+					const uint64_t cyclesBefore = machine.cycles();
+					machine.runForCycles(200'000);
+					if (machine.cycles() == cyclesBefore) break;
+				} while (machine.state() == console::MachineState::Running && SDL_GetTicksNS() < executionDeadline);
+			} else {
+				cycleAccumulator += elapsedSeconds * static_cast<double>(machine.profile().clockHz) * executionSpeed;
+				while (machine.state() == console::MachineState::Running && cycleAccumulator >= 1.0 &&
+					SDL_GetTicksNS() < executionDeadline) {
+					const uint64_t executionBudget = std::min<uint64_t>(static_cast<uint64_t>(cycleAccumulator), 200'000);
+					const uint64_t cyclesBefore = machine.cycles();
+					machine.runForCycles(executionBudget);
+					const uint64_t consumedCycles = machine.cycles() - cyclesBefore;
+					if (consumedCycles == 0) break;
+					cycleAccumulator = std::max(0.0, cycleAccumulator - static_cast<double>(consumedCycles));
+				}
+				const double maximumBacklog = static_cast<double>(machine.profile().clockHz) * executionSpeed * 0.25;
+				cycleAccumulator = std::min(cycleAccumulator, maximumBacklog);
+			}
 		}
 		if (stateBeforeExecution == console::MachineState::Running && machine.state() != console::MachineState::Running) centerExecutionLine = true;
 		if (audioStream) {
 			std::vector<float> samples = machine.drainAudioSamples();
-			if (!samples.empty()) SDL_PutAudioStreamData(audioStream, samples.data(), static_cast<int>(samples.size() * sizeof(float)));
+			if (unlimitedSpeed) {
+				if (SDL_GetAudioStreamQueued(audioStream) > 0) SDL_ClearAudioStream(audioStream);
+			} else if (!samples.empty()) {
+				std::vector<float> playbackSamples = console::resampleAudioForSpeed(samples, executionSpeed);
+				constexpr int MaximumQueuedAudioBytes = 48'000 * static_cast<int>(sizeof(float)) / 2;
+				if (SDL_GetAudioStreamQueued(audioStream) < MaximumQueuedAudioBytes) {
+					SDL_PutAudioStreamData(audioStream, playbackSamples.data(),
+						static_cast<int>(playbackSamples.size() * sizeof(float)));
+				}
+			}
 		}
 
 		const auto& profile = machine.profile();
@@ -780,11 +857,27 @@ int main(int, char**) {
 		if (ImGui::Button("Reset")) { machine.reset(); synchronizeBreakpoints(); centerExecutionLine = true; }
 		ImGui::SameLine();
 		ImGui::TextDisabled("%s%s", validBuild ? "Built" : "Not built", sourceDirty ? " - modified" : "");
+		ImGui::SetNextItemWidth(125.0f);
+		if (ImGui::SliderFloat("Speed", &executionSpeed, 0.05f, 10.0f, "%.2fx", ImGuiSliderFlags_Logarithmic)) {
+			unlimitedSpeed = false;
+			applySpeedPreference();
+		}
+		ImGui::SameLine();
+		if (ImGui::Checkbox("Unlimited", &unlimitedSpeed)) applySpeedPreference();
+		if (ImGui::IsItemHovered()) ImGui::SetTooltip("Run as fast as the host allows; audio output is disabled.");
 		editor.Render("Source editor", ImGui::GetContentRegionAvail(), false);
 		ImGui::End();
 
 		ImGui::Begin("Console", nullptr, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-		ImGui::Text("%s  |  %ux%u RGB332", profile.name.c_str(), profile.displayWidth, profile.displayHeight);
+		std::ostringstream speedLabelStream;
+		if (unlimitedSpeed) speedLabelStream << "Unlimited";
+		else speedLabelStream << std::fixed << std::setprecision(2) << executionSpeed << 'x';
+		const std::string speedLabel = speedLabelStream.str();
+		ImGui::Text("%s | %ux%u RGB332 @ %u Hz", profile.name.c_str(), profile.displayWidth,
+			profile.displayHeight, profile.framesPerSecond);
+		ImGui::TextDisabled("%s | Frame %llu | Scanline %u/%u (%.0f%%)", speedLabel.c_str(),
+			static_cast<unsigned long long>(machine.frames()),
+			machine.currentScanline() + 1, profile.displayHeight, machine.scanlineProgress() * 100.0);
 		const ImVec2 available = ImGui::GetContentRegionAvail();
 		const float controlsHeight = 132.0f;
 		const float scale = std::min(available.x / profile.displayWidth, std::max(1.0f, available.y - controlsHeight) / profile.displayHeight);
@@ -950,6 +1043,9 @@ int main(int, char**) {
 		}
 	}
 
+	preferences.executionSpeed = executionSpeed;
+	preferences.unlimited = unlimitedSpeed;
+	saveDesktopPreferences(preferencesPath, preferences);
 	destroySettingsWindow();
 	ImGui::SetCurrentContext(mainContext);
 	if (gamepad) SDL_CloseGamepad(gamepad);

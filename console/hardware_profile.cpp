@@ -19,7 +19,7 @@ HardwareProfile pocketProfile() {
 		10,
 		32,
 		4,
-		60,
+		30,
 	};
 }
 
@@ -38,7 +38,7 @@ HardwareProfile homeProfile() {
 		32,
 		256,
 		8,
-		60,
+		50,
 	};
 }
 

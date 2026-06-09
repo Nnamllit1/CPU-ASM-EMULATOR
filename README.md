@@ -36,7 +36,9 @@ cmake --build build-console --parallel
 ./build-console/CPU-ASM-CONSOLE
 ```
 
-The desktop environment uses a syntax-highlighting assembly editor with visible gutter breakpoints and current-line execution highlighting. Its Run action builds, loads, resets, and starts in one step. Keyboard, physical SDL gamepads, and console-style on-screen controls share configurable bindings, and the Inspector window exposes RAM, VRAM, ROM, storage, device registers, framebuffer output, and raw RGB332 VRAM. Open `Project > Settings` for a separate native settings window containing the custom hardware profile, controls, assets, and adjustable UI scale. Custom Hardware can start from the Pocket Color, Home 16, or Studio limits, so a project can keep a preset's display and memory layout while changing only its clock or another individual limit.
+The desktop environment uses a syntax-highlighting assembly editor with visible gutter breakpoints and current-line execution highlighting. Its Run action builds, loads, resets, and starts in one step. Keyboard, physical SDL gamepads, and console-style on-screen controls share configurable bindings, and the Inspector window exposes RAM, VRAM, ROM, storage, device registers, framebuffer output, and raw RGB332 VRAM. Open `Project > Settings` for a separate native settings window containing the custom hardware profile, controls, assets, and adjustable UI scale. Custom Hardware can start from the Pocket Color, Home 16, or Studio limits, so a project can keep a preset's display and memory layout while changing only its clock, refresh rate, or another individual limit.
+
+The execution toolbar provides a logarithmic `0.05x` to `10x` speed control and an Unlimited mode. Real-time `1x` follows the selected hardware clock, while slower modes make the cycle-timed scanout visible one row at a time. Audio follows the selected speed and pitch; Unlimited mode disables host audio output to remain responsive. The last desktop speed setting is stored globally and restored on the next launch.
 
 ## Specifications
 

@@ -1,5 +1,6 @@
 #include "console/console_machine.h"
 #include "console/asset_import.h"
+#include "console/playback.h"
 #include "console/project.h"
 #include "console/source_builder.h"
 
@@ -88,6 +89,10 @@ int main() {
 	studio = console::studioProfile();
 	studio.clockHz = 1'000'000'000ULL;
 	ok &= expect(console::validateProfile(studio, error), "1 GHz profile should be accepted");
+	ok &= expect(console::pocketProfile().framesPerSecond == 30 &&
+		console::homeProfile().framesPerSecond == 50 &&
+		console::studioProfile().framesPerSecond == 60,
+		"built-in profiles should expose distinct 30, 50, and 60 Hz displays");
 	const auto customPocket = console::customProfileFrom(console::ProfileId::Pocket);
 	ok &= expect(customPocket.id == console::ProfileId::Studio && customPocket.name == "Custom Hardware" &&
 		customPocket.clockHz == console::pocketProfile().clockHz &&
@@ -99,18 +104,56 @@ int main() {
 	project.name = "Round trip";
 	project.profile = console::ProfileId::Studio;
 	project.studio.clockHz = 1;
+	project.studio.framesPerSecond = 75;
 	project.input.keyboard[static_cast<size_t>(console::ConsoleButton::A)] = 'k';
 	project.input.gamepad[static_cast<size_t>(console::ConsoleButton::Start)] = 9;
 	const auto path = std::filesystem::temp_directory_path() / "cpu-asm-console-test.json";
 	ok &= expect(console::saveProject(path.string(), project, error), "project should save");
 	console::ConsoleProject loaded;
 	ok &= expect(console::loadProject(path.string(), loaded, error), "project should load");
-	ok &= expect(loaded.profile == console::ProfileId::Studio && loaded.studio.clockHz == 1,
+	ok &= expect(loaded.profile == console::ProfileId::Studio && loaded.studio.clockHz == 1 &&
+		loaded.studio.framesPerSecond == 75,
 		"project profile should round-trip");
 	ok &= expect(loaded.input.keyboard[static_cast<size_t>(console::ConsoleButton::A)] == 'k' &&
 		loaded.input.gamepad[static_cast<size_t>(console::ConsoleButton::Start)] == 9,
 		"project input bindings should round-trip");
 	std::filesystem::remove(path);
+
+	auto scanlineProfile = console::customProfileFrom(console::ProfileId::Pocket);
+	scanlineProfile.clockHz = 64;
+	scanlineProfile.framesPerSecond = 1;
+	scanlineProfile.displayWidth = 64;
+	scanlineProfile.displayHeight = 64;
+	console::ConsoleMachine scanlineMachine(scanlineProfile);
+	std::vector<uint8_t> scanlineRom;
+	for (int instruction = 0; instruction < 64; ++instruction) appendInstruction(scanlineRom, encode(0x0000));
+	ok &= expect(scanlineMachine.loadRom(scanlineRom, 0, error), "scanline timing ROM should load");
+	scanlineMachine.writeByte(0xC000, 0xE0);
+	scanlineMachine.writeByte(0xC040, 0x1C);
+	scanlineMachine.run();
+	scanlineMachine.runForCycles(1);
+	ok &= expect(scanlineMachine.currentScanline() == 1 && scanlineMachine.frames() == 0,
+		"one line period should advance exactly one scanline");
+	ok &= expect(scanlineMachine.framebuffer()[0] == 0xDA0000FF &&
+		scanlineMachine.framebuffer()[64] == 0x000000FF,
+		"scanout should expose the first row while later rows retain the previous frame");
+	scanlineMachine.runForCycles(63);
+	ok &= expect(scanlineMachine.currentScanline() == 0 && scanlineMachine.frames() == 1 &&
+		scanlineMachine.framebuffer()[64] != 0x000000FF,
+		"a complete set of scanlines should finish one frame");
+	scanlineMachine.writeByte(0xC000, 0x03);
+	scanlineMachine.writeByte(console::PPU_PRESENT_REGISTER, 1);
+	ok &= expect(scanlineMachine.currentScanline() == 0 && scanlineMachine.scanlineProgress() == 0.0 &&
+		scanlineMachine.framebuffer()[0] != 0xDA0000FF,
+		"present should restart scanout and expose its first row immediately");
+
+	const std::vector<float> audioSource = { 0.0f, 1.0f, 0.0f, -1.0f };
+	const auto slowAudio = console::resampleAudioForSpeed(audioSource, 0.5);
+	const auto fastAudio = console::resampleAudioForSpeed(audioSource, 2.0);
+	ok &= expect(slowAudio.size() == 8 && slowAudio[1] == 0.5f,
+		"slow playback should expand and interpolate audio samples");
+	ok &= expect(fastAudio.size() == 2 && fastAudio[1] == 0.0f,
+		"fast playback should contract audio samples");
 	{
 		std::ofstream legacy(path);
 		legacy << "{\"name\":\"Legacy\",\"source\":\"main.asm\",\"profile\":\"pocket\"}\n";
