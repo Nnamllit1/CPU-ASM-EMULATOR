@@ -10,7 +10,7 @@ This document defines the hardware contract used by the `ai-console-experiment` 
 | Home 16 | 8 MHz | 320x240 | 1 MiB | 4 MiB | 256 KiB | 1 MiB | 128, 32/scanline | 8 square-wave channels |
 | Studio | 1 Hz-1 GHz | 64x64-3840x2160 | 64 KiB-256 MiB | 64 KiB-512 MiB | framebuffer-256 MiB | 0-256 MiB | configurable | configurable |
 
-All profiles execute the same instruction set. Projects select a profile at runtime and may be tested under another profile without rebuilding.
+All profiles execute the same instruction set. Projects select a profile at runtime and may be tested under another profile without rebuilding. Custom Hardware can copy Pocket Color, Home 16, or Studio as a reference preset before individual values are overridden; the resulting machine still reports the custom profile ID.
 
 ## Address Map
 

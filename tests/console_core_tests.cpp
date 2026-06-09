@@ -88,6 +88,12 @@ int main() {
 	studio = console::studioProfile();
 	studio.clockHz = 1'000'000'000ULL;
 	ok &= expect(console::validateProfile(studio, error), "1 GHz profile should be accepted");
+	const auto customPocket = console::customProfileFrom(console::ProfileId::Pocket);
+	ok &= expect(customPocket.id == console::ProfileId::Studio && customPocket.name == "Custom Hardware" &&
+		customPocket.clockHz == console::pocketProfile().clockHz &&
+		customPocket.displayWidth == console::pocketProfile().displayWidth &&
+		customPocket.displayHeight == console::pocketProfile().displayHeight,
+		"custom hardware should inherit a reference profile while retaining the custom profile identity");
 
 	console::ConsoleProject project;
 	project.name = "Round trip";

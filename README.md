@@ -1,6 +1,6 @@
 # CPU-ASM-EMULATOR
 
-> **AI-made experimental branch:** The `ai-console-experiment` branch is intentionally implemented predominantly with AI assistance. The released `main` branch remains the maintainer's original CPU/assembler project.
+> **AI-made console branch:** The `ai-console-experiment` branch is intentionally implemented predominantly with AI assistance. The v1.1 console release is built from this branch, while `main` retains the maintainer's original CPU/assembler project.
 
 This is a simple emulator and ASM compiler for the "IDK i want to emulate a processor for fun" processor (or IDKIWTEAPFF for short).
 
@@ -36,7 +36,7 @@ cmake --build build-console --parallel
 ./build-console/CPU-ASM-CONSOLE
 ```
 
-The desktop environment uses a syntax-highlighting assembly editor with visible gutter breakpoints and current-line execution highlighting. Its Run action builds, loads, resets, and starts in one step. Keyboard, physical SDL gamepads, and console-style on-screen controls share configurable bindings, and the Inspector window exposes RAM, VRAM, ROM, storage, device registers, framebuffer output, and raw RGB332 VRAM. Open `Project > Settings` for a separate native settings window containing the custom hardware profile, controls, assets, and adjustable UI scale.
+The desktop environment uses a syntax-highlighting assembly editor with visible gutter breakpoints and current-line execution highlighting. Its Run action builds, loads, resets, and starts in one step. Keyboard, physical SDL gamepads, and console-style on-screen controls share configurable bindings, and the Inspector window exposes RAM, VRAM, ROM, storage, device registers, framebuffer output, and raw RGB332 VRAM. Open `Project > Settings` for a separate native settings window containing the custom hardware profile, controls, assets, and adjustable UI scale. Custom Hardware can start from the Pocket Color, Home 16, or Studio limits, so a project can keep a preset's display and memory layout while changing only its clock or another individual limit.
 
 ## Specifications
 

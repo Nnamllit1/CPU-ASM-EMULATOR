@@ -34,7 +34,7 @@ struct ConsoleProject {
 	std::string storagePath = "console-storage.sav";
 	std::string assetPath;
 	ProfileId profile = ProfileId::Pocket;
-	HardwareProfile studio = studioProfile();
+	HardwareProfile studio = customProfileFrom(ProfileId::Pocket);
 	InputBindings input;
 };
 

@@ -70,6 +70,13 @@ HardwareProfile profileFor(ProfileId id) {
 	return pocketProfile();
 }
 
+HardwareProfile customProfileFrom(ProfileId reference) {
+	HardwareProfile profile = profileFor(reference);
+	profile.id = ProfileId::Studio;
+	profile.name = "Custom Hardware";
+	return profile;
+}
+
 bool validateProfile(const HardwareProfile& profile, std::string& error) {
 	if (profile.clockHz < 1 || profile.clockHz > 1'000'000'000ULL) {
 		error = "CPU frequency must be between 1 Hz and 1 GHz.";

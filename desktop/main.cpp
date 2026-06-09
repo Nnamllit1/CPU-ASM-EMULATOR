@@ -475,30 +475,53 @@ int main(int, char**) {
 		if (ImGui::BeginTabBar("settings-tabs")) {
 			if (ImGui::BeginTabItem("Project")) {
 				const char* profiles[] = { "Pocket Color", "Home 16", "Custom Hardware" };
-				if (ImGui::Combo("Hardware profile", &selectedProfile, profiles, 3)) configureMachine();
+				const int previousProfile = selectedProfile;
+				if (ImGui::Combo("Hardware profile", &selectedProfile, profiles, 3)) {
+					if (selectedProfile == static_cast<int>(console::ProfileId::Studio) &&
+						previousProfile != static_cast<int>(console::ProfileId::Studio)) {
+						project.studio = console::customProfileFrom(static_cast<console::ProfileId>(previousProfile));
+					}
+					configureMachine();
+				}
 				if (selectedProfile == static_cast<int>(console::ProfileId::Studio)) {
-					ImGui::TextWrapped("Custom Hardware lets you select the CPU clock, display, memory, graphics, and audio limits yourself.");
+					ImGui::TextWrapped("Custom Hardware lets you start from a known console and override only the limits you want to change.");
 					ImGui::SeparatorText("Custom hardware");
-					int64_t clock = static_cast<int64_t>(project.studio.clockHz);
-					const int64_t minimumClock = 1;
-					const int64_t maximumClock = 1'000'000'000;
-					if (ImGui::SliderScalar("Clock Hz", ImGuiDataType_S64, &clock, &minimumClock, &maximumClock, "%lld", ImGuiSliderFlags_Logarithmic)) project.studio.clockHz = static_cast<uint64_t>(clock);
+					if (ImGui::BeginCombo("Start from", "Choose reference preset...")) {
+						for (int reference = static_cast<int>(console::ProfileId::Pocket);
+							reference <= static_cast<int>(console::ProfileId::Studio); ++reference) {
+							const auto referenceId = static_cast<console::ProfileId>(reference);
+							const auto referenceProfile = console::profileFor(referenceId);
+							if (ImGui::Selectable(referenceProfile.name.c_str())) {
+								project.studio = console::customProfileFrom(referenceId);
+								configureMachine();
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::TextDisabled("Copies the display, memory, graphics, and audio limits. You can then change any field.");
+					const uint64_t clockStep = 1'000;
+					const uint64_t clockFastStep = 1'000'000;
+					if (ImGui::InputScalar("Clock Hz", ImGuiDataType_U64, &project.studio.clockHz,
+						&clockStep, &clockFastStep, "%llu")) {
+						project.studio.clockHz = std::clamp<uint64_t>(project.studio.clockHz, 1, 1'000'000'000ULL);
+					}
 					int width = static_cast<int>(project.studio.displayWidth);
 					int height = static_cast<int>(project.studio.displayHeight);
 					if (ImGui::SliderInt("Display width", &width, 64, 1920)) project.studio.displayWidth = static_cast<uint32_t>(width);
 					if (ImGui::SliderInt("Display height", &height, 64, 1080)) project.studio.displayHeight = static_cast<uint32_t>(height);
-					int ramMiB = static_cast<int>(project.studio.ramBytes / (1024 * 1024));
-					int romMiB = static_cast<int>(project.studio.romBytes / (1024 * 1024));
-					int vramMiB = static_cast<int>(project.studio.vramBytes / (1024 * 1024));
-					int storageMiB = static_cast<int>(project.studio.storageBytes / (1024 * 1024));
-					ImGui::SliderInt("RAM MiB", &ramMiB, 1, 256);
-					ImGui::SliderInt("ROM MiB", &romMiB, 1, 512);
-					ImGui::SliderInt("VRAM MiB", &vramMiB, 1, 256);
-					ImGui::SliderInt("Storage MiB", &storageMiB, 0, 256);
-					project.studio.ramBytes = static_cast<size_t>(ramMiB) * 1024 * 1024;
-					project.studio.romBytes = static_cast<size_t>(romMiB) * 1024 * 1024;
-					project.studio.vramBytes = static_cast<size_t>(vramMiB) * 1024 * 1024;
-					project.studio.storageBytes = static_cast<size_t>(storageMiB) * 1024 * 1024;
+					auto memoryInput = [](const char* label, size_t& bytes, uint64_t minimumKiB, uint64_t maximumKiB) {
+						uint64_t kibibytes = static_cast<uint64_t>(bytes / 1024);
+						const uint64_t step = 64;
+						const uint64_t fastStep = 1024;
+						if (ImGui::InputScalar(label, ImGuiDataType_U64, &kibibytes, &step, &fastStep, "%llu")) {
+							kibibytes = std::clamp(kibibytes, minimumKiB, maximumKiB);
+							bytes = static_cast<size_t>(kibibytes * 1024);
+						}
+					};
+					memoryInput("RAM KiB", project.studio.ramBytes, 64, 256 * 1024);
+					memoryInput("ROM KiB", project.studio.romBytes, 64, 512 * 1024);
+					memoryInput("VRAM KiB", project.studio.vramBytes, 1, 256 * 1024);
+					memoryInput("Storage KiB", project.studio.storageBytes, 0, 256 * 1024);
 					int sprites = static_cast<int>(project.studio.maxSprites);
 					int scanlineSprites = static_cast<int>(project.studio.spritesPerScanline);
 					int paletteColors = static_cast<int>(project.studio.paletteColors);

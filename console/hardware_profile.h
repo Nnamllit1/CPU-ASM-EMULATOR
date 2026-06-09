@@ -33,6 +33,7 @@ HardwareProfile pocketProfile();
 HardwareProfile homeProfile();
 HardwareProfile studioProfile();
 HardwareProfile profileFor(ProfileId id);
+HardwareProfile customProfileFrom(ProfileId reference);
 bool validateProfile(const HardwareProfile& profile, std::string& error);
 
 } // namespace console
