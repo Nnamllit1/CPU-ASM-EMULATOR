@@ -23,6 +23,7 @@ All profiles execute the same instruction set. Projects select a profile at runt
 | `FF00-FFFF` | Device registers |
 
 Instruction ROM is Harvard-style. `0000-7FFF` is fixed and `8000-FFFF` is a switchable 32 KiB ROM bank.
+Assembly projects can emit switchable data with `.rombank N`; bank `N` is selected by writing the same value to `FF02`, and labels inside a bank use logical addresses beginning at `8000`.
 
 ## Device Registers
 

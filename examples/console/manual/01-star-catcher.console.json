@@ -1,0 +1,7 @@
+{
+  "name": "Manual 01 - Star Catcher",
+  "source": "examples/console/manual/01-star-catcher.asm",
+  "storage": "star-catcher.sav",
+  "asset": "",
+  "profile": "pocket"
+}

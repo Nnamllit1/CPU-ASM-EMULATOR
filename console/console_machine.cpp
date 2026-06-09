@@ -50,6 +50,7 @@ bool ConsoleMachine::configure(const HardwareProfile& profile, std::string& erro
 	ram_.assign(profile_.ramBytes, 0);
 	vram_.assign(profile_.vramBytes, 0);
 	rom_.assign(profile_.romBytes, 0);
+	loadedRomBytes_ = 0;
 	storage_.assign(profile_.storageBytes, 0);
 	framebuffer_.assign(static_cast<size_t>(profile_.displayWidth) * profile_.displayHeight, 0x000000FF);
 	audioChannels_.assign(profile_.audioChannels, AudioChannel{});
@@ -66,6 +67,7 @@ bool ConsoleMachine::loadRom(const std::vector<uint8_t>& bytes, uint16_t entryPo
 	}
 	std::fill(rom_.begin(), rom_.end(), 0);
 	std::copy(bytes.begin(), bytes.end(), rom_.begin());
+	loadedRomBytes_ = bytes.size();
 	entryPoint_ = entryPoint;
 	reset();
 	error.clear();
@@ -334,7 +336,7 @@ void ConsoleMachine::writeWord(uint16_t address, uint16_t value) {
 uint8_t ConsoleMachine::fetchRomByte(uint16_t address) const {
 	size_t index = address;
 	if (address >= 0x8000) {
-		const size_t bankCount = std::max<size_t>(1, rom_.size() / RomBankWindow);
+		const size_t bankCount = std::max<size_t>(1, (loadedRomBytes_ + RomBankWindow - 1) / RomBankWindow);
 		const size_t switchableBanks = std::max<size_t>(1, bankCount - 1);
 		const size_t bank = 1 + (static_cast<size_t>(romBank_) % switchableBanks);
 		index = bank * RomBankWindow + (address - 0x8000);
@@ -351,6 +353,19 @@ uint64_t ConsoleMachine::fetchInstruction(uint16_t address) const {
 		instruction = (instruction << 8) | fetchRomByte(static_cast<uint16_t>(address + byte));
 	}
 	return instruction;
+}
+
+uint16_t ConsoleMachine::readStackWord(uint16_t address) const {
+	const size_t high = static_cast<size_t>(address) % ram_.size();
+	const size_t low = static_cast<size_t>(static_cast<uint16_t>(address + 1)) % ram_.size();
+	return static_cast<uint16_t>((static_cast<uint16_t>(ram_[high]) << 8) | ram_[low]);
+}
+
+void ConsoleMachine::writeStackWord(uint16_t address, uint16_t value) {
+	const size_t high = static_cast<size_t>(address) % ram_.size();
+	const size_t low = static_cast<size_t>(static_cast<uint16_t>(address + 1)) % ram_.size();
+	ram_[high] = static_cast<uint8_t>((value >> 8) & 0xFF);
+	ram_[low] = static_cast<uint8_t>(value & 0xFF);
 }
 
 uint32_t ConsoleMachine::executeInstruction(uint64_t instruction) {
@@ -403,10 +418,10 @@ uint32_t ConsoleMachine::executeInstruction(uint64_t instruction) {
 	case 0x001A: if (registers_[rx] <= registers_[ry]) { branch(special); cost = 2; } else advance(); break;
 	case 0x001B: if (registers_[rx] > registers_[ry]) { branch(special); cost = 2; } else advance(); break;
 	case 0x001C: if (registers_[rx] >= registers_[ry]) { branch(special); cost = 2; } else advance(); break;
-	case 0x001D: sp_ = static_cast<uint16_t>(sp_ - 2); writeWord(sp_, registers_[rx]); advance(); cost = 3; break;
-	case 0x001E: registers_[rx] = readWord(sp_); sp_ = static_cast<uint16_t>(sp_ + 2); advance(); cost = 3; break;
-	case 0x001F: sp_ = static_cast<uint16_t>(sp_ - 2); writeWord(sp_, static_cast<uint16_t>(pc_ + 8)); branch(special); cost = 3; break;
-	case 0x0020: branch(readWord(sp_)); sp_ = static_cast<uint16_t>(sp_ + 2); cost = 3; break;
+	case 0x001D: sp_ = static_cast<uint16_t>(sp_ - 2); writeStackWord(sp_, registers_[rx]); advance(); cost = 3; break;
+	case 0x001E: registers_[rx] = readStackWord(sp_); sp_ = static_cast<uint16_t>(sp_ + 2); advance(); cost = 3; break;
+	case 0x001F: sp_ = static_cast<uint16_t>(sp_ - 2); writeStackWord(sp_, static_cast<uint16_t>(pc_ + 8)); branch(special); cost = 3; break;
+	case 0x0020: branch(readStackWord(sp_)); sp_ = static_cast<uint16_t>(sp_ + 2); cost = 3; break;
 	case 0x0021: output_ += std::to_string(registers_[rx]); advance(); cost = 4; break;
 	case 0x0022: {
 		uint16_t address = registers_[rx];

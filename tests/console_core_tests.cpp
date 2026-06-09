@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -194,11 +195,43 @@ int main() {
 	ok &= expect(macroBuild.success && macroBuild.addressToSourceLine.at(0) == 2 &&
 		macroBuild.addressToSourceLine.at(8) == 2 && macroBuild.addressToSourceLine.at(16) == 3,
 		"macro-expanded instructions should map back to the invocation line");
+	const auto callBuild = console::buildAssemblySource(
+		"start:\n    call worker\n    hlt\nworker:\n    movi r0, 77\n    ret\n");
+	console::ConsoleMachine callMachine(console::pocketProfile());
+	ok &= expect(callBuild.success && callMachine.loadRom(callBuild.rom, callBuild.entryPoint, error),
+		"call/return test program should load");
+	callMachine.run();
+	callMachine.runForCycles(100);
+	ok &= expect(callMachine.registers()[0] == 77 && callMachine.state() == console::MachineState::Halted,
+		"console stack operations should preserve return addresses behind the device page");
 	console::ConsoleMachine assembledMachine(console::pocketProfile());
 	ok &= expect(assembledMachine.loadRom(build.rom, build.entryPoint, error), "assembled ROM should load");
 	assembledMachine.run();
 	assembledMachine.runForCycles(100);
 	ok &= expect(assembledMachine.output().find('H') != std::string::npos, "assembled program should execute");
+
+	const auto bankedBuild = console::buildAssemblySource(
+		"start:\n"
+		"    movi r0, 0\n    stbi r0, 0xFF02\n    ldbri r1, bank_zero\n    out r1\n"
+		"    movi r0, 1\n    stbi r0, 0xFF02\n    ldbri r1, bank_one\n    out r1\n    hlt\n"
+		".rombank 0\nbank_zero:\n    .byte 65\n"
+		".rombank 1\nbank_one:\n    .byte 66\n");
+	console::ConsoleMachine bankedMachine(console::pocketProfile());
+	ok &= expect(bankedBuild.success && bankedBuild.rom.size() == 0x10001,
+		".rombank should place data in consecutive physical 32 KiB banks");
+	ok &= expect(bankedMachine.loadRom(bankedBuild.rom, bankedBuild.entryPoint, error),
+		"banked assembly image should load within the Pocket ROM limit");
+	bankedMachine.run();
+	bankedMachine.runForCycles(100);
+	ok &= expect(bankedMachine.output().starts_with("AB"),
+		"FF02 should select data emitted by matching .rombank directives");
+	const auto invalidBankBuild = console::buildAssemblySource(
+		"start:\n    hlt\n.rombank 1\n    .byte 1\n.rombank 0\n    .byte 2\n");
+	ok &= expect(!invalidBankBuild.success, ".rombank values should reject backwards or overlapping layouts");
+	const auto resetBankBuild = console::buildAssemblySource(
+		".reset start\n.org 8\nstart:\n    hlt\n.rombank 0\n    .byte 65\n.rombank 1\n    .byte 66\n");
+	ok &= expect(resetBankBuild.success && resetBankBuild.rom[0x8000] == 65 && resetBankBuild.rom[0x10000] == 66,
+		"reset-vector patching should not alter the first bytes of switchable ROM banks");
 
 	const auto audioBuild = console::buildAssemblySource(
 		"start:\n"
@@ -238,6 +271,83 @@ int main() {
 	ok &= expect(snakeMachine.readWord(console::TIMER_CYCLES_HIGH_REGISTER) ==
 		static_cast<uint16_t>(snakeMachine.cycles()),
 		"cycle timing MMIO should expose deterministic execution time");
+
+	for (const std::string& projectName : {
+		"01-star-catcher.console.json",
+		"02-neon-dodge.console.json",
+		"03-chunk-raytracer.console.json",
+	}) {
+		console::ConsoleProject manualProject;
+		const auto projectPath = std::filesystem::path(CPU_ASM_SOURCE_DIR) /
+			"examples/console/manual" / projectName;
+		ok &= expect(console::loadProject(projectPath.string(), manualProject, error) &&
+			manualProject.profile == console::ProfileId::Pocket &&
+			std::filesystem::exists(std::filesystem::path(CPU_ASM_SOURCE_DIR) / manualProject.sourcePath),
+			projectName + " should load as a valid Pocket Color project with an existing source file");
+	}
+
+	std::ifstream catcherSource(std::filesystem::path(CPU_ASM_SOURCE_DIR) / "examples/console/manual/01-star-catcher.asm");
+	std::ostringstream catcherBuffer;
+	catcherBuffer << catcherSource.rdbuf();
+	const auto catcherBuild = console::buildAssemblySource(catcherBuffer.str());
+	console::ConsoleMachine catcherMachine(console::pocketProfile());
+	ok &= expect(catcherSource.good() || catcherSource.eof(), "Star Catcher source should be readable");
+	ok &= expect(catcherBuild.success && catcherMachine.loadRom(catcherBuild.rom, catcherBuild.entryPoint, error),
+		"Star Catcher should assemble and load on Pocket Color");
+	catcherMachine.run();
+	catcherMachine.runForCycles(1'000'000);
+	ok &= expect(catcherMachine.state() != console::MachineState::Faulted &&
+		catcherMachine.readByte(console::PPU_CONTROL_REGISTER) == 3 &&
+		catcherMachine.readByte(console::PPU_SPRITE_COUNT_REGISTER) == 2,
+		"Star Catcher should run with its tile map and two sprites active");
+	const uint8_t catcherX = catcherMachine.readByte(0x0000);
+	catcherMachine.setInputButtons(1u << static_cast<uint16_t>(console::ConsoleButton::Right));
+	catcherMachine.runForCycles(300'000);
+	catcherMachine.setInputButtons(0);
+	ok &= expect(catcherMachine.readByte(0x0000) > catcherX,
+		"Star Catcher should respond to held directional input");
+	ok &= expect(!catcherMachine.drainAudioSamples().empty(),
+		"Star Catcher should exercise Pocket Color audio");
+
+	std::ifstream dodgeSource(std::filesystem::path(CPU_ASM_SOURCE_DIR) / "examples/console/manual/02-neon-dodge.asm");
+	std::ostringstream dodgeBuffer;
+	dodgeBuffer << dodgeSource.rdbuf();
+	const auto dodgeBuild = console::buildAssemblySource(dodgeBuffer.str());
+	console::ConsoleMachine dodgeMachine(console::pocketProfile());
+	ok &= expect(dodgeSource.good() || dodgeSource.eof(), "Neon Dodge source should be readable");
+	ok &= expect(dodgeBuild.success && dodgeBuild.rom.size() > 0x8000 &&
+		dodgeMachine.loadRom(dodgeBuild.rom, dodgeBuild.entryPoint, error),
+		"Neon Dodge should assemble with banked ROM data and load on Pocket Color");
+	dodgeMachine.run();
+	dodgeMachine.runForCycles(1'000'000);
+	ok &= expect(dodgeMachine.state() != console::MachineState::Faulted &&
+		dodgeMachine.readByte(console::PPU_CONTROL_REGISTER) == 3 &&
+		dodgeMachine.readByte(console::PPU_SPRITE_COUNT_REGISTER) == 10,
+		"Neon Dodge should run with its tile map and ten sprites active");
+	dodgeMachine.writeByte(0x0002, 1);
+	dodgeMachine.setInputButtons(1u << static_cast<uint16_t>(console::ConsoleButton::Start));
+	dodgeMachine.runForCycles(500'000);
+	dodgeMachine.setInputButtons(0);
+	ok &= expect(dodgeMachine.readByte(0x0002) == 0,
+		"Neon Dodge should restart from its game-over state");
+	ok &= expect(!dodgeMachine.drainAudioSamples().empty(),
+		"Neon Dodge should exercise all four Pocket Color audio channels");
+
+	std::ifstream raySource(std::filesystem::path(CPU_ASM_SOURCE_DIR) / "examples/console/manual/03-chunk-raytracer.asm");
+	std::ostringstream rayBuffer;
+	rayBuffer << raySource.rdbuf();
+	const auto rayBuild = console::buildAssemblySource(rayBuffer.str());
+	console::ConsoleMachine rayMachine(console::pocketProfile());
+	ok &= expect(raySource.good() || raySource.eof(), "Chunk Raytracer source should be readable");
+	ok &= expect(rayBuild.success && rayMachine.loadRom(rayBuild.rom, rayBuild.entryPoint, error),
+		"Chunk Raytracer should assemble and load on Pocket Color");
+	rayMachine.run();
+	rayMachine.runForCycles(30'000'000);
+	ok &= expect(rayMachine.state() != console::MachineState::Faulted &&
+		rayMachine.readByte(console::PPU_CONTROL_REGISTER) == 1,
+		"Chunk Raytracer should complete a sustained bitmap-mode render without faulting");
+	ok &= expect(rayMachine.vram()[64 * 160 + 80] != 0 && rayMachine.vram()[8 * 160 + 8] != 0,
+		"Chunk Raytracer should shade both the sphere and sky into banked VRAM");
 
 	if (ok) std::cout << "All console core tests passed.\n";
 	return ok ? 0 : 1;

@@ -15,6 +15,7 @@ extern std::map <std::string, int16_t> registerNames; // Map to store register n
 extern std::string asmFileContent; // Variable to store the content of the assembly file as a string
 extern std::vector<RomChunk> outputRom;
 extern uint16_t outputRomAddress; // Tracks the ROM byte address while emitting chunks in the second pass.
+extern size_t outputRomPhysicalAddress; // Tracks the flattened image offset, including switchable ROM banks.
 extern uint16_t entryPoint; // ROM byte address where emulation starts.
 extern bool resetVectorEnabled; // True when `.reset label` should write a hardware-style reset vector.
 extern uint16_t resetVectorAddress; // ROM byte address written into reset vector bytes 0 and 1.

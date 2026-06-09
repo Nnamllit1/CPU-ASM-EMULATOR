@@ -10,6 +10,7 @@ std::string asmFileContent = ""; // Variable to store the content of the assembl
 
 std::vector<RomChunk> outputRom;
 uint16_t outputRomAddress = 0; // Tracks the ROM byte address while emitting chunks in the second pass.
+size_t outputRomPhysicalAddress = 0;
 uint16_t entryPoint = 0; // ROM byte address where emulation starts.
 bool resetVectorEnabled = false; // True when `.reset label` should write a hardware-style reset vector.
 uint16_t resetVectorAddress = 0; // ROM byte address written into reset vector bytes 0 and 1.
@@ -367,7 +368,8 @@ ParsedInstruction parseLine(const std::string& rawLine) {
 bool processLabels() {
 	std::istringstream iss(asmFileContent);
 	std::string line;
-	uint16_t romAddress = 0; // Byte address of the next instruction in ROM.
+	uint32_t romAddress = 0; // Logical CPU address of the next instruction in the current ROM window.
+	int currentRomBank = -1;
 	while (std::getline(iss, line)) {
 		line = trim(line); // Trim whitespace from the line
 		if (line.empty()) {
@@ -376,17 +378,42 @@ bool processLabels() {
 		if (line.back() == ':') { // Check if the line is a label (ends with ':')
 			// Extract the label name by removing the trailing ':' and store the current ROM byte address.
 			std::string labelName = line.substr(0, line.size() - 1); // Extract the label name by removing the trailing ':'
-			labels[labelName] = romAddress; // Map the label name to the current ROM byte address.
+			if (labels.contains(labelName)) {
+				std::cout << "Duplicate label: " << labelName << "\n";
+				return false;
+			}
+			labels[labelName] = static_cast<uint16_t>(romAddress); // Labels retain their logical CPU address.
+		} else if (line.rfind(".rombank", 0) == 0) {
+			ParsedInstruction ins = parseLine(line);
+			if (ins.operands.size() != 1) {
+				std::cout << ".rombank requires exactly one bank number.\n";
+				return false;
+			}
+			const int bank = parseNumberLiteral(ins.operands[0]);
+			if (bank < 0 || bank > 254 || bank <= currentRomBank) {
+				std::cout << ".rombank values must increase from 0 through 254.\n";
+				return false;
+			}
+			if (currentRomBank < 0 && romAddress > 0x8000) {
+				std::cout << "Fixed ROM content exceeds the 32 KiB fixed window.\n";
+				return false;
+			}
+			if (currentRomBank >= 0 && romAddress > 0x10000) {
+				std::cout << "Switchable ROM bank content exceeds 32 KiB.\n";
+				return false;
+			}
+			currentRomBank = bank;
+			romAddress = 0x8000;
 		} else if (line.rfind(".byte", 0) == 0) {
 			// For now, each .byte line emits exactly one byte into ROM.
-			romAddress = static_cast<uint16_t>(romAddress + 1);
+			romAddress += 1;
 		} else if (line.rfind(".asciiz", 0) == 0) {
 			// .asciiz "string" emits the raw bytes of the string followed by a null terminator.
 			size_t firstQuote = line.find('"');
 			size_t lastQuote = line.find_last_of('"');
 
 			if (firstQuote != std::string::npos && lastQuote != std::string::npos && lastQuote > firstQuote) {
-				romAddress = static_cast<uint16_t>(romAddress + (lastQuote - firstQuote - 1) + 1);
+				romAddress += static_cast<uint32_t>((lastQuote - firstQuote - 1) + 1);
 			}
 		} else if (line.rfind(".ascii", 0) == 0) {
 			// .ascii "string" emits the raw bytes of the string without a null terminator.
@@ -394,12 +421,12 @@ bool processLabels() {
 			size_t lastQuote = line.find_last_of('"');
 
 			if (firstQuote != std::string::npos && lastQuote != std::string::npos && lastQuote > firstQuote) {
-				romAddress = static_cast<uint16_t>(romAddress + (lastQuote - firstQuote - 1));
+				romAddress += static_cast<uint32_t>(lastQuote - firstQuote - 1);
 			}
 
 		} else if (line.rfind(".word", 0) == 0) {
 			// .word emits one 16-bit value into ROM as two bytes.
-			romAddress = static_cast<uint16_t>(romAddress + 2);
+			romAddress += 2;
 
 		} else if (line.rfind(".space", 0) == 0) {
 			// .space N reserves N bytes in ROM, so we need to parse the operand to know how much to increment the ROM address.
@@ -408,7 +435,7 @@ bool processLabels() {
 			if (ins.operands.size() == 1) {
 				int count = parseNumberLiteral(ins.operands[0]);
 				if (count >= 0) {
-					romAddress = static_cast<uint16_t>(romAddress + count);
+					romAddress += static_cast<uint32_t>(count);
 				}
 			}
 
@@ -420,7 +447,7 @@ bool processLabels() {
 				int alignment = parseNumberLiteral(ins.operands[0]);
 				if (alignment > 0) {
 					while (romAddress % alignment != 0) {
-						romAddress = static_cast<uint16_t>(romAddress + 1);
+						romAddress += 1;
 					}
 				}
 			}
@@ -432,8 +459,8 @@ bool processLabels() {
 			if (ins.operands.size() == 1) {
 				int target = parseNumberLiteral(ins.operands[0]);
 
-				if (target >= romAddress) {
-					romAddress = static_cast<uint16_t>(target);
+				if (target >= 0 && static_cast<uint32_t>(target) >= romAddress) {
+					romAddress = static_cast<uint32_t>(target);
 				}
 			}
 
@@ -444,7 +471,13 @@ bool processLabels() {
 			// .reset writes the target address into ROM bytes 0 and 1 later, but emits no bytes here.
 
 		} else {
-			romAddress = static_cast<uint16_t>(romAddress + INSTRUCTION_SIZE_BYTES); // Increment by one 64-bit instruction.
+			romAddress += INSTRUCTION_SIZE_BYTES; // Increment by one 64-bit instruction.
+		}
+		const uint32_t windowEnd = currentRomBank < 0 ? 0x8000 : 0x10000;
+		if (romAddress > windowEnd) {
+			std::cout << (currentRomBank < 0 ? "Fixed ROM content exceeds the 32 KiB fixed window.\n" :
+				"Switchable ROM bank content exceeds 32 KiB.\n");
+			return false;
 		}
 	}
 	return true; // Return true if labels are processed successfully, false otherwise
@@ -470,7 +503,19 @@ bool processInstruction() {
 		try {
 			ParsedInstruction ins = parseLine(line);
 
-			if (ins.mnemonic == ".byte") { // Handle .byte directive to emit a single byte into ROM.
+			if (ins.mnemonic == ".rombank") {
+				if (ins.operands.size() != 1) throw std::runtime_error(".rombank requires exactly one bank number");
+				const int bank = parseNumberLiteral(ins.operands[0]);
+				if (bank < 0 || bank > 254) throw std::runtime_error(".rombank value must be between 0 and 254");
+				const size_t target = (static_cast<size_t>(bank) + 1) * 0x8000;
+				if (target < outputRomPhysicalAddress) throw std::runtime_error(".rombank values must increase without overlapping prior ROM data");
+				while (outputRomPhysicalAddress < target) {
+					outputRom.push_back({ false, 0, 0 });
+					++outputRomPhysicalAddress;
+				}
+				outputRomAddress = 0x8000;
+				continue;
+			} else if (ins.mnemonic == ".byte") { // Handle .byte directive to emit a single byte into ROM.
 				if (ins.operands.size() != 1) {
 					throw std::runtime_error(".byte requires exactly one value");
 				}
@@ -482,6 +527,7 @@ bool processInstruction() {
 
 				outputRom.push_back({ false, 0, static_cast<uint8_t>(value) });
 				outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+				++outputRomPhysicalAddress;
 				continue;
 
 			} else if (ins.mnemonic == ".asciiz") { // Handle .asciiz directive to emit the raw bytes of a string followed by a null terminator into ROM.
@@ -497,10 +543,12 @@ bool processInstruction() {
 				for (char c : text) {
 					outputRom.push_back({ false, 0, static_cast<uint8_t>(c) });
 					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+					++outputRomPhysicalAddress;
 				}
 
 				outputRom.push_back({ false, 0, 0 });
 				outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+				++outputRomPhysicalAddress;
 				continue;
 			
 			} else if (ins.mnemonic == ".ascii") { // Handle .ascii directive to emit the raw bytes of a string into ROM.
@@ -516,6 +564,7 @@ bool processInstruction() {
 				for (char c : text) {
 					outputRom.push_back({ false, 0, static_cast<uint8_t>(c) });
 					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+					++outputRomPhysicalAddress;
 				}
 
 				continue;
@@ -534,6 +583,7 @@ bool processInstruction() {
 				outputRom.push_back({ false, 0, static_cast<uint8_t>((value >> 8) & 0xFF) });
 				outputRom.push_back({ false, 0, static_cast<uint8_t>(value & 0xFF) });
 				outputRomAddress = static_cast<uint16_t>(outputRomAddress + 2);
+				outputRomPhysicalAddress += 2;
 				continue;
 
 			} else if (ins.mnemonic == ".space") { // Handle .space directive to reserve a specified number of bytes in ROM (emit zero bytes).
@@ -550,6 +600,7 @@ bool processInstruction() {
 				for (int i = 0; i < count; ++i) {
 					outputRom.push_back({ false, 0, 0 });
 					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+					++outputRomPhysicalAddress;
 				}
 
 				continue;
@@ -568,6 +619,7 @@ bool processInstruction() {
 				while (outputRomAddress % alignment != 0) {
 					outputRom.push_back({ false, 0, 0 });
 					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+					++outputRomPhysicalAddress;
 				}
 
 				continue;
@@ -590,6 +642,7 @@ bool processInstruction() {
 				while (outputRomAddress < target) {
 					outputRom.push_back({ false, 0, 0 });
 					outputRomAddress = static_cast<uint16_t>(outputRomAddress + 1);
+					++outputRomPhysicalAddress;
 				}
 
 				continue;
@@ -633,6 +686,7 @@ bool processInstruction() {
 			outputBinary.push_back(encoded);
 			outputRom.push_back({ true, encoded, 0 });
 			outputRomAddress = static_cast<uint16_t>(outputRomAddress + INSTRUCTION_SIZE_BYTES);
+			outputRomPhysicalAddress += INSTRUCTION_SIZE_BYTES;
 		}
 		catch (const std::exception& e) {
 			// Propagate error details including the source line for easier debugging.
@@ -761,7 +815,7 @@ bool processMacros() {
 	return true;
 }
 
-uint8_t applyResetVectorByte(uint16_t byteAddress, uint8_t value) {
+uint8_t applyResetVectorByte(size_t byteAddress, uint8_t value) {
 	// The final ROM image includes reset-vector patching, so text dumps,
 	// binary output, and emulation all agree on bytes 0 and 1.
 	if (resetVectorEnabled && byteAddress == 0) {
@@ -775,7 +829,7 @@ uint8_t applyResetVectorByte(uint16_t byteAddress, uint8_t value) {
 
 std::vector<uint8_t> buildRomImage() {
 	std::vector<uint8_t> rom;
-	uint16_t address = 0;
+	size_t address = 0;
 
 	// Flatten the mixed instruction/data stream into the exact ROM bytes that
 	// the emulator or `--bin` should see after all assembler-side patching.
@@ -862,6 +916,7 @@ bool assemble() {
 	outputBinary.clear();
 	outputRom.clear();
 	outputRomAddress = 0;
+	outputRomPhysicalAddress = 0;
 	entryPoint = 0;
 	resetVectorEnabled = false;
 	resetVectorAddress = 0;

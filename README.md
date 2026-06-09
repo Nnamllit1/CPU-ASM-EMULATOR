@@ -12,6 +12,10 @@ It also includes persistent banked storage, deterministic square-wave audio, P3/
 
 The default desktop project is `Pocket Snake`, a complete tile-and-sprite game targeting the low-end Pocket Color hardware profile. It uses held D-pad input and deterministic frame timing rather than host-speed delays.
 
+New to the console or to assembly programming? Start with the [CPU ASM Console Programming Manual](docs/manual/README.md). It progresses from the CPU and desktop workflow through graphics, input, timing, audio, storage, a step-by-step Star Catcher build, and advanced example case studies.
+
+For one self-contained implementation reference covering the complete instruction set, assembler behavior, hardware interfaces, project format, and known quirks, use [CPU ASM Console Complete Summary](docs/summary.md).
+
 ## Building
 
 ### Windows
@@ -144,6 +148,7 @@ movi r3, 'A'       ; ASCII character value
 | .space | count | Emit count zero bytes into instruction ROM |
 | .align | value | Emit zero bytes until the ROM address is divisible by value |
 | .org | address | Move the ROM output position forward to address |
+| .rombank | bank | Begin switchable 32 KiB ROM bank data at logical address 0x8000 |
 | .entry | label | Set the ROM address where emulation starts |
 | .reset | label | Write label address into ROM bytes 0 and 1 as the reset vector |
 
@@ -250,10 +255,15 @@ More instructions will be added later.
 
 ## Examples
 
+The [programming manual](docs/manual/README.md) explains the console examples and the hardware concepts behind them.
+
 - `examples/hello world.asm` prints a simple message using built-in macros.
 - `examples/interactive key inspector.asm` polls keyboard/input bytes with `in`, prints each received key/code, and exits on `q`.
 - `examples/rom byte decoder.asm` reads encoded bytes from instruction ROM and decodes them.
 - `examples/full system showcase.asm` exercises most implemented CPU features.
+- `examples/console/manual/01-star-catcher.asm` is a compact Pocket Color game that introduces tile maps, sprites, held input, frame timing, score state, and sound.
+- `examples/console/manual/02-neon-dodge.asm` expands that foundation with multiple moving sprites, collision detection, game-over/restart state, a HUD, four audio channels, and banked ROM data.
+- `examples/console/manual/03-chunk-raytracer.asm` demonstrates bitmap mode, RGB332 pixel shading, banked VRAM, and visible chunk-by-chunk scanout progress.
 
 ### Macros
 

@@ -1,0 +1,7 @@
+{
+  "name": "Manual 02 - Neon Dodge",
+  "source": "examples/console/manual/02-neon-dodge.asm",
+  "storage": "neon-dodge.sav",
+  "asset": "",
+  "profile": "pocket"
+}

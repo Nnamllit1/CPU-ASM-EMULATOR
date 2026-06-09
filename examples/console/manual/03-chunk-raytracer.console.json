@@ -1,0 +1,7 @@
+{
+  "name": "Manual 03 - Chunk Raytracer",
+  "source": "examples/console/manual/03-chunk-raytracer.asm",
+  "storage": "chunk-raytracer.sav",
+  "asset": "",
+  "profile": "pocket"
+}

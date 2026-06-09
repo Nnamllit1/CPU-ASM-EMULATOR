@@ -118,6 +118,8 @@ public:
 private:
 	uint8_t fetchRomByte(uint16_t address) const;
 	uint64_t fetchInstruction(uint16_t address) const;
+	uint16_t readStackWord(uint16_t address) const;
+	void writeStackWord(uint16_t address, uint16_t value);
 	uint32_t executeInstruction(uint64_t instruction);
 	void refreshFramebuffer();
 	void renderScanline(uint32_t scanline);
@@ -158,6 +160,7 @@ private:
 	std::vector<uint8_t> ram_;
 	std::vector<uint8_t> vram_;
 	std::vector<uint8_t> rom_;
+	size_t loadedRomBytes_ = 0;
 	std::vector<uint8_t> storage_;
 	std::vector<uint32_t> framebuffer_;
 	std::vector<AudioChannel> audioChannels_;
